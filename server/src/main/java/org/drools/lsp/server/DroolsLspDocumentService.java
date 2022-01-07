@@ -6,10 +6,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
-import org.drools.compiler.compiler.DrlParser;
-import org.drools.compiler.compiler.DroolsParserException;
-import org.drools.compiler.lang.descr.PackageDescr;
+import org.antlr.v4.runtime.CharStream;
+import org.antlr.v4.runtime.CharStreams;
+import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.ParserRuleContext;
+import org.antlr.v4.runtime.Token;
+import org.antlr.v4.runtime.tree.ParseTree;
+import org.antlr.v4.runtime.tree.TerminalNode;
+import org.drools.drl.ast.descr.PackageDescr;
+import org.drools.parser.DRLLexer;
+import org.drools.parser.DRLParser;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.CompletionList;
@@ -19,9 +27,17 @@ import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DidSaveTextDocumentParams;
+import org.eclipse.lsp4j.MessageParams;
+import org.eclipse.lsp4j.MessageType;
+import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.services.TextDocumentService;
+
+import static org.drools.parser.DRLParserHelper.createParseTree;
+import static org.drools.parser.DRLParserHelper.findNodeAtPosition;
+import static org.drools.parser.DRLParserHelper.hasParentOfType;
+import static org.drools.parser.DRLParserHelper.parse;
 
 public class DroolsLspDocumentService implements TextDocumentService {
 
@@ -62,54 +78,79 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     public String getRuleName(CompletionParams completionParams) {
         String text = sourcesMap.get( completionParams.getTextDocument().getUri() );
-        try {
-            DrlParser drlParser = new DrlParser();
-            PackageDescr packageDescr = drlParser.parse(null, text);
-            if (drlParser.hasErrors()) {
-                throw new RuntimeException("" + drlParser.getErrors());
-            }
-            return packageDescr.getRules().get(0).getName();
-        } catch (DroolsParserException e) {
-            throw new RuntimeException(e);
-        }
+        PackageDescr packageDescr = parse(text);
+        return packageDescr.getRules().get(0).getName();
     }
 
     @Override
     public CompletableFuture<Either<List<CompletionItem>, CompletionList>> completion(CompletionParams completionParams) {
-        // Provide completion item.
-        return CompletableFuture.supplyAsync(() -> {
+        return CompletableFuture.supplyAsync( () -> Either.forLeft( attempt( () -> getCompletionItems(completionParams) ) ) );
+    }
 
-            List<CompletionItem> completionItems = new ArrayList<>();
-            try {
+    private <T> T attempt(Supplier<T> supplier) {
+        try {
+            return supplier.get();
+        } catch (Exception e) {
+            server.getClient().showMessage(new MessageParams(MessageType.Error, e.getMessage()));
+        }
+        return null;
+    }
 
-                // Sample Completion item for text duplication
-                CompletionItem completionItem = new CompletionItem();
+    private List<CompletionItem> getCompletionItems(CompletionParams completionParams) {
+        String text = sourcesMap.get( completionParams.getTextDocument().getUri() );
+        ParseTree parseTree = createParseTree(text);
 
-                // Define the text to be inserted in to the file if the completion item is selected.
-                String text = sourcesMap.get( completionParams.getTextDocument().getUri() );
-                completionItem.setInsertText(text == null ? "" : text);
+        Position caretPosition = completionParams.getPosition();
+        // caret line position is zero based
+        ParseTree node = caretPosition == null ? null : findNodeAtPosition(parseTree, caretPosition.getLine()+1, caretPosition.getCharacter());
 
-                // Set the label that shows when the completion drop down appears in the Editor.
-                completionItem.setLabel("duplicate text");
+//        server.getClient().showMessage(new MessageParams(MessageType.Info, "Position=" + caretPosition));
+//        server.getClient().showMessage(new MessageParams(MessageType.Info, "Node=" + node));
+//
+//        Token stop = node instanceof TerminalNode ? ((TerminalNode)node).getSymbol() : ((ParserRuleContext)node).getStop();
+//        server.getClient().showMessage(new MessageParams(MessageType.Info, "row=" + stop.getLine()));
+//        server.getClient().showMessage(new MessageParams(MessageType.Info, "col=" + stop.getCharPositionInLine()));
 
-                // Set the completion kind. This is a snippet.
-                // That means it replace character which trigger the completion and
-                // replace it with what defined in inserted text.
-                completionItem.setKind(CompletionItemKind.Snippet);
+        CompletionItem completionItem;
 
-                // This will set the details for the snippet code which will help user to
-                // understand what this completion item is.
-                completionItem.setDetail("this will duplicate current text");
+        if (hasParentOfType(node, DRLParser.RULE_lhs)) {
+            completionItem = new CompletionItem();
+            completionItem.setInsertText("LHS");
+            completionItem.setLabel("LHS");
+            completionItem.setKind(CompletionItemKind.Snippet);
+        } else if (hasParentOfType(node, DRLParser.RULE_rhs)) {
+            completionItem = new CompletionItem();
+            completionItem.setInsertText("RHS");
+            completionItem.setLabel("RHS");
+            completionItem.setKind(CompletionItemKind.Snippet);
+        } else {
+            completionItem = createDuplicateTextDummyItem(text);
+        }
 
-                // Add the sample completion item to the list.
-                completionItems.add(completionItem);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+        List<CompletionItem> completionItems = new ArrayList<>();
+        completionItems.add(completionItem);
+        return completionItems;
+    }
 
-            // Return the list of completion items.
-            return Either.forLeft(completionItems);
-        });
+    private CompletionItem createDuplicateTextDummyItem(String text) {
+        // Sample Completion item for text duplication
+        CompletionItem completionItem = new CompletionItem();
+
+        // Define the text to be inserted in to the file if the completion item is selected.
+        completionItem.setInsertText(text == null ? "" : text);
+
+        // Set the label that shows when the completion drop down appears in the Editor.
+        completionItem.setLabel("duplicate text");
+
+        // Set the completion kind. This is a snippet.
+        // That means it replace character which trigger the completion and
+        // replace it with what defined in inserted text.
+        completionItem.setKind(CompletionItemKind.Snippet);
+
+        // This will set the details for the snippet code which will help user to
+        // understand what this completion item is.
+        completionItem.setDetail("this will duplicate current text");
+        return completionItem;
     }
 
     @Override

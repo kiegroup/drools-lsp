@@ -41,7 +41,8 @@ public class LauncherTest {
 
     private static final long TIMEOUT = 2000;
 
-    @Test public void testNotification() throws IOException {
+    @Test
+    public void testNotification() {
         MessageParams p = new MessageParams();
         p.setMessage("Hello World");
         p.setType(MessageType.Info);
@@ -51,7 +52,8 @@ public class LauncherTest {
         client.joinOnEmpty();
     }
 
-    @Test public void testRequest() throws Exception {
+    @Test
+    public void testRequest() throws Exception {
         CompletionParams p = new CompletionParams();
         p.setPosition(new Position(1,1));
         p.setTextDocument(new TextDocumentIdentifier("test/foo.txt"));
@@ -131,7 +133,8 @@ public class LauncherTest {
 
     private Level logLevel;
 
-    @Before public void setup() throws IOException {
+    @Before
+    public void setup() throws IOException {
         PipedInputStream inClient = new PipedInputStream();
         PipedOutputStream outClient = new PipedOutputStream();
         PipedInputStream inServer = new PipedInputStream();
@@ -152,12 +155,12 @@ public class LauncherTest {
         logger.setLevel(Level.SEVERE);
     }
 
-    @After public void teardown() throws InterruptedException, ExecutionException {
+    @After
+    public void teardown() throws InterruptedException, ExecutionException {
         clientListening.cancel(true);
         serverListening.cancel(true);
         Thread.sleep(10);
         Logger logger = Logger.getLogger(StreamMessageProducer.class.getName());
         logger.setLevel(logLevel);
     }
-
 }
