@@ -20,7 +20,7 @@ function activate(context) {
         // Java execution path.
         let excecutable = path.join(JAVA_HOME, 'bin', 'java');
         // path to the launcher.jar
-        let classPath = path.join(__dirname, '..', '..', 'server', 'target', 'drools-lsp-server-jar-with-dependencies.jar');
+        let classPath = path.join(__dirname, '..', '..', 'drools-lsp-server', 'target', 'drools-lsp-server-jar-with-dependencies.jar');
         const args = ['-cp', classPath];
         // Set the server options 
         // -- java execution path
