@@ -8,15 +8,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
-import org.antlr.v4.runtime.CharStream;
-import org.antlr.v4.runtime.CharStreams;
-import org.antlr.v4.runtime.CommonTokenStream;
-import org.antlr.v4.runtime.ParserRuleContext;
-import org.antlr.v4.runtime.Token;
 import org.antlr.v4.runtime.tree.ParseTree;
-import org.antlr.v4.runtime.tree.TerminalNode;
 import org.drools.drl.ast.descr.PackageDescr;
-import org.drools.parser.DRLLexer;
 import org.drools.parser.DRLParser;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
@@ -37,6 +30,7 @@ import org.eclipse.lsp4j.services.TextDocumentService;
 import static org.drools.parser.DRLParserHelper.createParseTree;
 import static org.drools.parser.DRLParserHelper.findNodeAtPosition;
 import static org.drools.parser.DRLParserHelper.hasParentOfType;
+import static org.drools.parser.DRLParserHelper.isAfterSymbol;
 import static org.drools.parser.DRLParserHelper.parse;
 
 public class DroolsLspDocumentService implements TextDocumentService {
@@ -91,7 +85,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
         try {
             return supplier.get();
         } catch (Exception e) {
-            server.getClient().showMessage(new MessageParams(MessageType.Error, e.getMessage()));
+            server.getClient().showMessage(new MessageParams(MessageType.Error, e.toString()));
         }
         return null;
     }
@@ -101,11 +95,13 @@ public class DroolsLspDocumentService implements TextDocumentService {
         ParseTree parseTree = createParseTree(text);
 
         Position caretPosition = completionParams.getPosition();
-        // caret line position is zero based
-        ParseTree node = caretPosition == null ? null : findNodeAtPosition(parseTree, caretPosition.getLine()+1, caretPosition.getCharacter());
+        int row = caretPosition == null ? -1 : caretPosition.getLine()+1; // caret line position is zero based
+        int col = caretPosition == null ? -1 : caretPosition.getCharacter();
+
+        ParseTree node = caretPosition == null ? null : findNodeAtPosition(parseTree, row, col);
 
 //        server.getClient().showMessage(new MessageParams(MessageType.Info, "Position=" + caretPosition));
-//        server.getClient().showMessage(new MessageParams(MessageType.Info, "Node=" + node));
+//        server.getClient().showMessage(new MessageParams(MessageType.Info, "Node = " + node));
 //
 //        Token stop = node instanceof TerminalNode ? ((TerminalNode)node).getSymbol() : ((ParserRuleContext)node).getStop();
 //        server.getClient().showMessage(new MessageParams(MessageType.Info, "row=" + stop.getLine()));
@@ -113,12 +109,12 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
         CompletionItem completionItem;
 
-        if (hasParentOfType(node, DRLParser.RULE_lhs)) {
+        if (hasParentOfType(node, DRLParser.RULE_lhs) || isAfterSymbol(node, DRLParser.WHEN, row, col)) {
             completionItem = new CompletionItem();
             completionItem.setInsertText("LHS");
             completionItem.setLabel("LHS");
             completionItem.setKind(CompletionItemKind.Snippet);
-        } else if (hasParentOfType(node, DRLParser.RULE_rhs)) {
+        } else if (hasParentOfType(node, DRLParser.RULE_rhs) || isAfterSymbol(node, DRLParser.THEN, row, col)) {
             completionItem = new CompletionItem();
             completionItem.setInsertText("RHS");
             completionItem.setLabel("RHS");
@@ -129,6 +125,9 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
         List<CompletionItem> completionItems = new ArrayList<>();
         completionItems.add(completionItem);
+
+//        server.getClient().showMessage(new MessageParams(MessageType.Info, "completionItem=" + completionItem.getLabel()));
+
         return completionItems;
     }
 
