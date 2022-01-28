@@ -4,11 +4,16 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
+import com.vmware.antlr4c3.CodeCompletionCore;
 import org.antlr.v4.runtime.tree.ParseTree;
+import org.antlr.v4.runtime.tree.TerminalNode;
 import org.drools.drl.ast.descr.PackageDescr;
 import org.drools.parser.DRLParser;
 import org.eclipse.lsp4j.CompletionItem;
@@ -27,8 +32,10 @@ import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.services.TextDocumentService;
 
+import static org.drools.parser.DRLParserHelper.createDrlParser;
 import static org.drools.parser.DRLParserHelper.createParseTree;
 import static org.drools.parser.DRLParserHelper.findNodeAtPosition;
+import static org.drools.parser.DRLParserHelper.getNodeIndex;
 import static org.drools.parser.DRLParserHelper.hasParentOfType;
 import static org.drools.parser.DRLParserHelper.isAfterSymbol;
 import static org.drools.parser.DRLParserHelper.parse;
@@ -90,15 +97,28 @@ public class DroolsLspDocumentService implements TextDocumentService {
         return null;
     }
 
-    private List<CompletionItem> getCompletionItems(CompletionParams completionParams) {
+    public List<CompletionItem> getCompletionItems(CompletionParams completionParams) {
+        List<CompletionItem> completionItems = new ArrayList<>();
+
         String text = sourcesMap.get( completionParams.getTextDocument().getUri() );
-        ParseTree parseTree = createParseTree(text);
+        DRLParser drlParser = createDrlParser(text);
 
         Position caretPosition = completionParams.getPosition();
         int row = caretPosition == null ? -1 : caretPosition.getLine()+1; // caret line position is zero based
         int col = caretPosition == null ? -1 : caretPosition.getCharacter();
 
+        ParseTree parseTree = drlParser.compilationunit();
         ParseTree node = caretPosition == null ? null : findNodeAtPosition(parseTree, row, col);
+
+        CodeCompletionCore core = new CodeCompletionCore(drlParser, null, null);
+        CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(getNodeIndex(node), drlParser.getRuleContext());
+
+        candidates.tokens.keySet().stream().filter( Objects::nonNull )
+                .filter( i -> i <= DRLParser.END ) // filter keywords only
+                .map( drlParser.getVocabulary()::getSymbolicName )
+                .map( String::toLowerCase )
+                .map( k -> createCompletionItem(k, CompletionItemKind.Keyword))
+                .forEach(completionItems::add);
 
 //        server.getClient().showMessage(new MessageParams(MessageType.Info, "Position=" + caretPosition));
 //        server.getClient().showMessage(new MessageParams(MessageType.Info, "Node = " + node));
@@ -110,25 +130,27 @@ public class DroolsLspDocumentService implements TextDocumentService {
         CompletionItem completionItem;
 
         if (hasParentOfType(node, DRLParser.RULE_lhs) || isAfterSymbol(node, DRLParser.WHEN, row, col)) {
-            completionItem = new CompletionItem();
-            completionItem.setInsertText("LHS");
-            completionItem.setLabel("LHS");
-            completionItem.setKind(CompletionItemKind.Snippet);
+            completionItem = createCompletionItem("LHS", CompletionItemKind.Snippet);
         } else if (hasParentOfType(node, DRLParser.RULE_rhs) || isAfterSymbol(node, DRLParser.THEN, row, col)) {
-            completionItem = new CompletionItem();
-            completionItem.setInsertText("RHS");
-            completionItem.setLabel("RHS");
-            completionItem.setKind(CompletionItemKind.Snippet);
+            completionItem = createCompletionItem("RHS", CompletionItemKind.Snippet);
         } else {
             completionItem = createDuplicateTextDummyItem(text);
         }
 
-        List<CompletionItem> completionItems = new ArrayList<>();
         completionItems.add(completionItem);
 
 //        server.getClient().showMessage(new MessageParams(MessageType.Info, "completionItem=" + completionItem.getLabel()));
 
         return completionItems;
+    }
+
+    private CompletionItem createCompletionItem(String label, CompletionItemKind itemKind) {
+        CompletionItem completionItem;
+        completionItem = new CompletionItem();
+        completionItem.setInsertText(label);
+        completionItem.setLabel(label);
+        completionItem.setKind(itemKind);
+        return completionItem;
     }
 
     private CompletionItem createDuplicateTextDummyItem(String text) {

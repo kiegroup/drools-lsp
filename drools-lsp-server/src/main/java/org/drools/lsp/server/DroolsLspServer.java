@@ -15,7 +15,7 @@ import org.eclipse.lsp4j.services.WorkspaceService;
 
 public class DroolsLspServer implements LanguageServer, LanguageClientAware {
 
-    private final TextDocumentService textService;
+    private final DroolsLspDocumentService textService;
     private final WorkspaceService workspaceService;
 
     private LanguageClient client;
@@ -58,7 +58,7 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
     }
 
     @Override
-    public TextDocumentService getTextDocumentService() {
+    public DroolsLspDocumentService getTextDocumentService() {
         return textService;
     }
 

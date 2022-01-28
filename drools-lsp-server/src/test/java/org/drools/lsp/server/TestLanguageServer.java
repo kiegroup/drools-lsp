@@ -22,6 +22,7 @@ import org.eclipse.lsp4j.services.LanguageClient;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class TestLanguageServer {
 
@@ -32,8 +33,8 @@ public class TestLanguageServer {
         CompletionParams completionParams = new CompletionParams();
         completionParams.setTextDocument(new TextDocumentIdentifier("myDocument"));
 
-        CompletableFuture<Either<List<CompletionItem>, CompletionList>> result = ls.getTextDocumentService().completion(completionParams);
-        CompletionItem completionItem = result.get().getLeft().get(0);
+        List<CompletionItem> result = ls.getTextDocumentService().getCompletionItems(completionParams);
+        CompletionItem completionItem = result.get(0);
         assertEquals("suggestion", completionItem.getInsertText());
     }
 
@@ -46,7 +47,7 @@ public class TestLanguageServer {
         CompletionParams completionParams = new CompletionParams();
         completionParams.setTextDocument(new TextDocumentIdentifier("myDocument"));
 
-        String ruleName = ((DroolsLspDocumentService) ls.getTextDocumentService()).getRuleName(completionParams);
+        String ruleName = ls.getTextDocumentService().getRuleName(completionParams);
         assertEquals("MyRule", ruleName);
     }
 
@@ -56,9 +57,9 @@ public class TestLanguageServer {
                 "package org.test;\n" +
                 "import org.test.model.Person;\n" +
                 "rule TestRule when\n" +
-                "  $p:Person()\n" +
+                "  $p:Person() \n" +
                 "then\n" +
-                "  System.out.println($p.getName());\n" +
+                "  System.out.println($p.getName()); \n" +
                 "end";
 
         DroolsLspServer ls = getDroolsLspServerForDocument(drl);
@@ -66,15 +67,24 @@ public class TestLanguageServer {
         CompletionParams completionParams = new CompletionParams();
         completionParams.setTextDocument(new TextDocumentIdentifier("myDocument"));
 
-        completionParams.setPosition(new Position(3, 4));
-        CompletableFuture<Either<List<CompletionItem>, CompletionList>> result = ls.getTextDocumentService().completion(completionParams);
-        CompletionItem completionItem = result.get().getLeft().get(0);
-        assertEquals("LHS", completionItem.getInsertText());
+        completionParams.setPosition(new Position(1, 0));
+        List<CompletionItem> result = ls.getTextDocumentService().getCompletionItems(completionParams);
+        assertTrue( hasItem(result, "import") );
+        assertTrue( hasItem(result, "rule") );
 
-        completionParams.setPosition(new Position(5, 14));
-        result = ls.getTextDocumentService().completion(completionParams);
-        completionItem = result.get().getLeft().get(0);
-        assertEquals("RHS", completionItem.getInsertText());
+        completionParams.setPosition(new Position(3, 14));
+        result = ls.getTextDocumentService().getCompletionItems(completionParams);
+        assertTrue( hasItem(result, "LHS") );
+//        assertTrue( hasItem(result, "then") );
+
+        completionParams.setPosition(new Position(5, 36));
+        result = ls.getTextDocumentService().getCompletionItems(completionParams);
+        assertTrue( hasItem(result, "RHS") );
+//        assertTrue( hasItem(result, "end") );
+    }
+
+    private boolean hasItem(List<CompletionItem> result, String text) {
+        return result.stream().map(CompletionItem::getInsertText).anyMatch(text::equals);
     }
 
     private DroolsLspServer getDroolsLspServerForDocument(String drl) {
