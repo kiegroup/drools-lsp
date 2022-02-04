@@ -10,7 +10,6 @@ import org.eclipse.lsp4j.TextDocumentSyncKind;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageClientAware;
 import org.eclipse.lsp4j.services.LanguageServer;
-import org.eclipse.lsp4j.services.TextDocumentService;
 import org.eclipse.lsp4j.services.WorkspaceService;
 
 public class DroolsLspServer implements LanguageServer, LanguageClientAware {
@@ -49,12 +48,12 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
 
     @Override
     public CompletableFuture<Object> shutdown() {
-        return null;
+        return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public void exit() {
-
+        System.exit(0);
     }
 
     @Override
