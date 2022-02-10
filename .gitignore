@@ -15,3 +15,5 @@ dependency-reduced-pom.xml
 
 #CI
 !.ci
+/client/out/
+/client/node_modules/

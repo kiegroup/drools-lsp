@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 // Import the language client, language client options and server options from VSCode language client.
-import { LanguageClient, LanguageClientOptions, ServerOptions } from 'vscode-languageclient';
+import {Executable, LanguageClient, LanguageClientOptions, ServerOptions} from 'vscode-languageclient';
 
 // Name of the launcher class which contains the main.
 const main: string = 'org.drools.lsp.server.DroolsLspLauncher';
@@ -27,16 +27,14 @@ export function activate(context: vscode.ExtensionContext) {
 
 		// path to the launcher.jar
 		let classPath = path.join(__dirname, '..', '..', 'drools-lsp-server', 'target', 'drools-lsp-server-jar-with-dependencies.jar');
+		// const args: string[] = ['-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=127.0.0.1:8000', '-cp', classPath];
 		const args: string[] = ['-cp', classPath];
 
-		// Set the server options 
-		// -- java execution path
-		// -- argument to be pass when executing the java command
-		let serverOptions: ServerOptions = {
-			command: excecutable,
-			args: [...args, main],
-			options: {}
-		};
+        let serverOptions: ServerOptions = {
+            command: excecutable,
+            args: [...args, main],
+            options: {}
+        };
 
 		// Options to control the language client
 		let clientOptions: LanguageClientOptions = {

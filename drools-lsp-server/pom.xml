@@ -10,29 +10,25 @@
     <version>1.0.0-SNAPSHOT</version>
   </parent>
 
-  <groupId>org.drools</groupId>
   <artifactId>drools-lsp-server</artifactId>
-  <version>1.0.0-SNAPSHOT</version>
+
+  <name>Drools :: LSP :: Server</name>
 
   <dependencies>
     <dependency>
+      <groupId>org.drools</groupId>
+      <artifactId>drools-completion</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <!-- External dependencies -->
+    <dependency>
       <groupId>org.eclipse.lsp4j</groupId>
       <artifactId>org.eclipse.lsp4j</artifactId>
-      <version>0.12.0</version>
+      <version>${version.org.eclipse.lsp4j}</version>
     </dependency>
 
-    <dependency>
-      <groupId>com.vmware.antlr4-c3</groupId>
-      <artifactId>antlr4-c3</artifactId>
-      <version>1.1</version>
-    </dependency>
-
-    <dependency>
-      <groupId>org.drools</groupId>
-      <artifactId>drools-parser</artifactId>
-      <version>1.0.0-SNAPSHOT</version>
-    </dependency>
-
+    <!-- Tests -->
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>

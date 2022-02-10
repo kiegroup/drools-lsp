@@ -21,8 +21,12 @@ function activate(context) {
         let excecutable = path.join(JAVA_HOME, 'bin', 'java');
         // path to the launcher.jar
         let classPath = path.join(__dirname, '..', '..', 'drools-lsp-server', 'target', 'drools-lsp-server-jar-with-dependencies.jar');
+        // const args: string[] = ['-cp', classPath, '-agentlib:jdwp=transport=dt_socket,address=8000,server=y,suspend=n'];
         const args = ['-cp', classPath];
-        // Set the server options 
+        console.log(`excecutable: ${excecutable}`);
+        console.log(`args: ${args}`);
+        console.log(`main: ${main}`);
+        // Set the server options
         // -- java execution path
         // -- argument to be pass when executing the java command
         let serverOptions = {

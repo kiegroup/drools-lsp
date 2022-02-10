@@ -12,12 +12,16 @@
   <properties>
     <maven.compiler.target>11</maven.compiler.target>
     <maven.compiler.source>11</maven.compiler.source>
+    <version.drools-drl-ast>8.16.0.Beta</version.drools-drl-ast>
     <version.org.antlr4>4.9.2</version.org.antlr4>
+    <version.org.eclipse.lsp4j>0.12.0</version.org.eclipse.lsp4j>
+    <version.antlr4-c3>1.1</version.antlr4-c3>
     <version.junit>4.13.2</version.junit>
   </properties>
 
   <modules>
     <module>drools-lsp-server</module>
     <module>drools-parser</module>
+    <module>drools-completion</module>
   </modules>
 </project>
