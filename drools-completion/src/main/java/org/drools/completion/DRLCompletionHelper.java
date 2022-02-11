@@ -15,6 +15,7 @@
  */
 package org.drools.completion;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -48,7 +49,12 @@ public class DRLCompletionHelper {
 
         ParseTree parseTree = drlParser.compilationunit();
         ParseTree node = caretPosition == null ? null : findNodeAtPosition(parseTree, row, col);
-        // TODO Fix NPE if caretPosition/node are null
+
+        if (node == null) {
+            client.showMessage(new MessageParams(MessageType.Error, "No node found at current position"));
+            return Collections.emptyList();
+        }
+
         client.showMessage(new MessageParams(MessageType.Info, "node = " + node));
 
         List<CompletionItem> completionItems = getCompletionItems(drlParser, node);
@@ -72,11 +78,10 @@ public class DRLCompletionHelper {
 
     static List<CompletionItem> getCompletionItems(DRLParser drlParser, ParseTree node) {
         CodeCompletionCore core = new CodeCompletionCore(drlParser, null, null);
-        // TODO Fix NPE if node is null
         CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(getNodeIndex(node), drlParser.getRuleContext());
 
         return candidates.tokens.keySet().stream().filter(Objects::nonNull )
-                .filter( i -> i <= DRLParser.END ) // filter keywords only
+                .filter( i -> i > 0 && i <= DRLParser.END ) // filter keywords only
                 .map( drlParser.getVocabulary()::getSymbolicName )
                 .map( String::toLowerCase )
                 .map( k -> createCompletionItem(k, CompletionItemKind.Keyword))

@@ -31,22 +31,19 @@ import static org.junit.Assert.*;
 
 public class DroolsLspDocumentServiceTest {
 
-    @Ignore
     @Test
-    public void testCompletion() throws Exception {
-        // TODO
+    public void testCompletion() {
         DroolsLspDocumentService droolsLspDocumentService = getDroolsLspDocumentService("suggestion");
 
         CompletionParams completionParams = new CompletionParams();
         completionParams.setTextDocument(new TextDocumentIdentifier("myDocument"));
         Position caretPosition = new Position();
         caretPosition.setCharacter(0);
-        caretPosition.setLine(-1); // -1 needed because of  int row = caretPosition == null ? -1 : caretPosition.getLine()+1; // caret line position is zero based
+        caretPosition.setLine(0);
         completionParams.setPosition(caretPosition);
 
         List<CompletionItem> result = droolsLspDocumentService.getCompletionItems(completionParams);
-        CompletionItem completionItem = result.get(0);
-        assertEquals("suggestion", completionItem.getInsertText());
+        assertTrue( result.stream().map(CompletionItem::getInsertText).anyMatch(s -> "suggestion".equals(s)) );
     }
 
     @Test
@@ -61,7 +58,6 @@ public class DroolsLspDocumentServiceTest {
         String ruleName = droolsLspDocumentService.getRuleName(completionParams);
         assertEquals("MyRule", ruleName);
     }
-
 
     @Test
     public void testFindLHSandRHS() throws Exception {
