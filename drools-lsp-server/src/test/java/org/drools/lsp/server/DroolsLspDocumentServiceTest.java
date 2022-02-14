@@ -47,7 +47,7 @@ public class DroolsLspDocumentServiceTest {
     }
 
     @Test
-    public void testReadRuleName() throws Exception {
+    public void testReadRuleName() {
         String drl = "rule MyRule when Dog(name == \"Bart\") then end";
 
         DroolsLspDocumentService droolsLspDocumentService = getDroolsLspDocumentService(drl);
@@ -60,15 +60,15 @@ public class DroolsLspDocumentServiceTest {
     }
 
     @Test
-    public void testFindLHSandRHS() throws Exception {
+    public void testFindLHSandRHS() {
         String drl =
                 "package org.test;\n" +
-                        "import org.test.model.Person;\n" +
-                        "rule TestRule when\n" +
-                        "  $p:Person() \n" +
-                        "then\n" +
-                        "  System.out.println($p.getName()); \n" +
-                        "end";
+                "import org.test.model.Person;\n" +
+                "rule TestRule when\n" +
+                "  $p:Person() \n" +
+                "then\n" +
+                "  System.out.println($p.getName()); \n" +
+                "end";
 
         DroolsLspDocumentService droolsLspDocumentService = getDroolsLspDocumentService(drl);
 
