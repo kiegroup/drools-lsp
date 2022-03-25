@@ -15,26 +15,19 @@
  */
 package org.drools.completion;
 
-import java.util.Collections;
+import com.vmware.antlr4c3.CodeCompletionCore;
+import org.drools.parser.DRLParser;
+import org.eclipse.lsp4j.CompletionItem;
+import org.eclipse.lsp4j.CompletionItemKind;
+import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.services.LanguageClient;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-import com.vmware.antlr4c3.CodeCompletionCore;
-import org.antlr.v4.runtime.tree.ParseTree;
-import org.drools.parser.DRLParser;
-import org.eclipse.lsp4j.CompletionItem;
-import org.eclipse.lsp4j.CompletionItemKind;
-import org.eclipse.lsp4j.MessageParams;
-import org.eclipse.lsp4j.MessageType;
-import org.eclipse.lsp4j.Position;
-import org.eclipse.lsp4j.services.LanguageClient;
-
+import static org.drools.parser.DRLParserHelper.computeTokenIndex;
 import static org.drools.parser.DRLParserHelper.createDrlParser;
-import static org.drools.parser.DRLParserHelper.findNodeAtPosition;
-import static org.drools.parser.DRLParserHelper.getNodeIndex;
-import static org.drools.parser.DRLParserHelper.hasParentOfType;
-import static org.drools.parser.DRLParserHelper.isAfterSymbol;
 
 public class DRLCompletionHelper {
 
@@ -44,47 +37,24 @@ public class DRLCompletionHelper {
     public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client) {
         DRLParser drlParser = createDrlParser(text);
 
-        int row = caretPosition == null ? -1 : caretPosition.getLine()+1; // caret line position is zero based
+        int row = caretPosition == null ? -1 : caretPosition.getLine() + 1; // caret line position is zero based
         int col = caretPosition == null ? -1 : caretPosition.getCharacter();
 
-        ParseTree parseTree = drlParser.compilationunit();
-        ParseTree node = caretPosition == null ? null : findNodeAtPosition(parseTree, row, col);
+        drlParser.compilationUnit();
+        Integer nodeIndex = computeTokenIndex(drlParser, row, col);
 
-        if (node == null) {
-            client.showMessage(new MessageParams(MessageType.Error, "No node found at current position"));
-            return Collections.emptyList();
-        }
-
-        client.showMessage(new MessageParams(MessageType.Info, "node = " + node));
-
-        List<CompletionItem> completionItems = getCompletionItems(drlParser, node);
-
-        CompletionItem completionItem;
-
-        if (hasParentOfType(node, DRLParser.RULE_lhs) || isAfterSymbol(node, DRLParser.WHEN, row, col)) {
-            completionItem = createCompletionItem("LHS", CompletionItemKind.Snippet);
-        } else if (hasParentOfType(node, DRLParser.RULE_rhs) || isAfterSymbol(node, DRLParser.THEN, row, col)) {
-            completionItem = createCompletionItem("RHS", CompletionItemKind.Snippet);
-        } else {
-            completionItem = createDuplicateTextDummyItem(text);
-        }
-
-        completionItems.add(completionItem);
-
-        client.showMessage(new MessageParams(MessageType.Info, "completionItem=" + completionItem.getLabel()));
-
-        return completionItems;
+        return getCompletionItems(drlParser, nodeIndex);
     }
 
-    static List<CompletionItem> getCompletionItems(DRLParser drlParser, ParseTree node) {
+    static List<CompletionItem> getCompletionItems(DRLParser drlParser, int nodeIndex) {
         CodeCompletionCore core = new CodeCompletionCore(drlParser, null, null);
-        CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(getNodeIndex(node), drlParser.getRuleContext());
+        CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(nodeIndex, null);
 
-        return candidates.tokens.keySet().stream().filter(Objects::nonNull )
-                .filter( i -> i > 0 && i <= DRLParser.END ) // filter keywords only
-                .map( drlParser.getVocabulary()::getSymbolicName )
-                .map( String::toLowerCase )
-                .map( k -> createCompletionItem(k, CompletionItemKind.Keyword))
+        return candidates.tokens.keySet().stream().filter(Objects::nonNull)
+                .filter(integer -> !Tokens.IGNORED.contains(integer))
+                .map(integer -> drlParser.getVocabulary().getDisplayName(integer).replace("'", ""))
+                .map(String::toLowerCase)
+                .map(k -> createCompletionItem(k, CompletionItemKind.Keyword))
                 .collect(Collectors.toList());
     }
 
@@ -96,26 +66,4 @@ public class DRLCompletionHelper {
         completionItem.setKind(itemKind);
         return completionItem;
     }
-
-    static CompletionItem createDuplicateTextDummyItem(String text) {
-        // Sample Completion item for text duplication
-        CompletionItem completionItem = new CompletionItem();
-
-        // Define the text to be inserted in to the file if the completion item is selected.
-        completionItem.setInsertText(text == null ? "" : text);
-
-        // Set the label that shows when the completion drop down appears in the Editor.
-        completionItem.setLabel("duplicate text");
-
-        // Set the completion kind. This is a snippet.
-        // That means it replace character which trigger the completion and
-        // replace it with what defined in inserted text.
-        completionItem.setKind(CompletionItemKind.Snippet);
-
-        // This will set the details for the snippet code which will help user to
-        // understand what this completion item is.
-        completionItem.setDetail("this will duplicate current text");
-        return completionItem;
-    }
-
 }

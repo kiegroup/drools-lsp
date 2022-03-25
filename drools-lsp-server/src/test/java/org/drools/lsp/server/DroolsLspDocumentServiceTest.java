@@ -14,26 +14,23 @@ package org.drools.lsp.server;/*
  * limitations under the License.
  */
 
-import java.util.List;
-
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionParams;
-import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
-import org.eclipse.lsp4j.TextDocumentItem;
-import org.junit.Ignore;
 import org.junit.Test;
 
+import java.util.List;
+
 import static org.drools.lsp.server.TestHelperMethods.getDroolsLspDocumentService;
-import static org.drools.lsp.server.TestHelperMethods.getDroolsLspServerForDocument;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class DroolsLspDocumentServiceTest {
 
     @Test
     public void testCompletion() {
-        DroolsLspDocumentService droolsLspDocumentService = getDroolsLspDocumentService("suggestion");
+        DroolsLspDocumentService droolsLspDocumentService = getDroolsLspDocumentService("");
 
         CompletionParams completionParams = new CompletionParams();
         completionParams.setTextDocument(new TextDocumentIdentifier("myDocument"));
@@ -43,7 +40,7 @@ public class DroolsLspDocumentServiceTest {
         completionParams.setPosition(caretPosition);
 
         List<CompletionItem> result = droolsLspDocumentService.getCompletionItems(completionParams);
-        assertTrue( result.stream().map(CompletionItem::getInsertText).anyMatch(s -> "suggestion".equals(s)) );
+        assertTrue(result.stream().map(CompletionItem::getInsertText).anyMatch("package"::equals));
     }
 
     @Test
@@ -77,18 +74,16 @@ public class DroolsLspDocumentServiceTest {
 
         completionParams.setPosition(new Position(1, 0));
         List<CompletionItem> result = droolsLspDocumentService.getCompletionItems(completionParams);
-        assertTrue( hasItem(result, "import") );
-        assertTrue( hasItem(result, "rule") );
+        assertTrue(hasItem(result, "import"));
+        assertTrue(hasItem(result, "rule"));
 
         completionParams.setPosition(new Position(3, 14));
         result = droolsLspDocumentService.getCompletionItems(completionParams);
-        assertTrue( hasItem(result, "LHS") );
-//        assertTrue( hasItem(result, "then") );
+        assertTrue(hasItem(result, "then"));  // LHS
 
         completionParams.setPosition(new Position(5, 36));
         result = droolsLspDocumentService.getCompletionItems(completionParams);
-        assertTrue( hasItem(result, "RHS") );
-//        assertTrue( hasItem(result, "end") );
+        assertTrue(hasItem(result, "end")); // RHS
     }
 
     private boolean hasItem(List<CompletionItem> result, String text) {
