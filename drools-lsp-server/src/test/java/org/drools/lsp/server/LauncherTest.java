@@ -32,17 +32,19 @@ import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageServer;
 import org.eclipse.xtext.xbase.lib.Pair;
 import org.eclipse.xtext.xbase.lib.util.ToStringBuilder;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
-public class LauncherTest {
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
+
+class LauncherTest {
 
     private static final long TIMEOUT = 2000;
 
     @Test
-    public void testNotification() {
+    void testNotification() {
         MessageParams p = new MessageParams();
         p.setMessage("Hello World");
         p.setType(MessageType.Info);
@@ -53,9 +55,9 @@ public class LauncherTest {
     }
 
     @Test
-    public void testRequest() throws Exception {
+    void testRequest() throws Exception {
         CompletionParams p = new CompletionParams();
-        p.setPosition(new Position(1,1));
+        p.setPosition(new Position(1, 1));
         p.setTextDocument(new TextDocumentIdentifier("test/foo.txt"));
 
         CompletionList result = new CompletionList();
@@ -72,7 +74,7 @@ public class LauncherTest {
 
         server.expectedRequests.put("textDocument/completion", new Pair<>(p, result));
         CompletableFuture<Either<List<CompletionItem>, CompletionList>> future = clientLauncher.getRemoteProxy().getTextDocumentService().completion(p);
-        Assert.assertEquals(Either.forRight(result).toString(), future.get(TIMEOUT, TimeUnit.MILLISECONDS).toString());
+        assertThat(future.get(TIMEOUT, TimeUnit.MILLISECONDS).toString()).isEqualTo(Either.forRight(result).toString());
         client.joinOnEmpty();
     }
 
@@ -82,9 +84,9 @@ public class LauncherTest {
 
         @Override
         public CompletableFuture<?> request(String method, Object parameter) {
-            Assert.assertTrue(expectedRequests.containsKey(method));
+            assertThat(expectedRequests.containsKey(method)).isTrue();
             Pair<Object, Object> result = expectedRequests.remove(method);
-            Assert.assertEquals(result.getKey().toString(), parameter.toString());
+            assertThat(parameter.toString()).isEqualTo(result.getKey().toString());
             return CompletableFuture.completedFuture(result.getValue());
         }
 
@@ -92,9 +94,9 @@ public class LauncherTest {
 
         @Override
         public void notify(String method, Object parameter) {
-            Assert.assertTrue(expectedNotifications.containsKey(method));
+            assertThat(expectedNotifications.containsKey(method)).isTrue();
             Object object = expectedNotifications.remove(method);
-            Assert.assertEquals(object.toString(), parameter.toString());
+            assertThat(parameter.toString()).isEqualTo(object.toString());
         }
 
         /**
@@ -113,7 +115,7 @@ public class LauncherTest {
                     e.printStackTrace();
                 }
             } while ( System.currentTimeMillis() < before + 1000);
-            Assert.fail("expectations weren't empty "+toString());
+            fail("", "expectations weren't empty " + toString());
         }
 
         @Override
@@ -133,7 +135,7 @@ public class LauncherTest {
 
     private Level logLevel;
 
-    @Before
+    @BeforeEach
     public void setup() throws IOException {
         PipedInputStream inClient = new PipedInputStream();
         PipedOutputStream outClient = new PipedOutputStream();
@@ -155,7 +157,7 @@ public class LauncherTest {
         logger.setLevel(Level.SEVERE);
     }
 
-    @After
+    @AfterEach
     public void teardown() throws InterruptedException, ExecutionException {
         clientListening.cancel(true);
         serverListening.cancel(true);

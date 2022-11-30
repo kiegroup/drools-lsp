@@ -14,16 +14,16 @@ import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.ShowMessageRequestParams;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.eclipse.lsp4j.services.LanguageClient;
-import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
-public class DRLCompletionHelperTest {
+class DRLCompletionHelperTest {
 
-    @Ignore
+    @Disabled("TBD")
     @Test
-    public void testGetCompletionItems() {
+    void testGetCompletionItems() {
         // TODO
         String text = "rule MyRule when Dog(name == \"Bart\") then end";
         CompletionParams completionParams = new CompletionParams();
@@ -36,11 +36,11 @@ public class DRLCompletionHelperTest {
 
         List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(text, caretPosition, getLanguageClient());
         CompletionItem completionItem = result.get(0);
-        assertEquals("suggestion", completionItem.getInsertText());
+        assertThat(completionItem.getInsertText()).isEqualTo("suggestion");
     }
 
     @Test
-    public void testTestGetCompletionItems() {
+    void testTestGetCompletionItems() {
         // TODO
     }
 

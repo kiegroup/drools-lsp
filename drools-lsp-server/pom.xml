@@ -27,14 +27,26 @@
       <artifactId>org.eclipse.lsp4j</artifactId>
       <version>${version.org.eclipse.lsp4j}</version>
     </dependency>
-
-    <!-- Tests -->
     <dependency>
-      <groupId>junit</groupId>
-      <artifactId>junit</artifactId>
-      <version>${version.junit}</version>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <version>${version.org.assertj}</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
+      <version>${version.org.junit}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-engine</artifactId>
+      <version>${version.org.junit}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Tests -->
   </dependencies>
 
   <build>
