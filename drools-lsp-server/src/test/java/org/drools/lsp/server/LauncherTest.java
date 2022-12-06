@@ -44,7 +44,7 @@ class LauncherTest {
     private static final long TIMEOUT = 2000;
 
     @Test
-    void testNotification() {
+    void notification() {
         MessageParams p = new MessageParams();
         p.setMessage("Hello World");
         p.setType(MessageType.Info);
@@ -55,7 +55,7 @@ class LauncherTest {
     }
 
     @Test
-    void testRequest() throws Exception {
+    void completionRequest() throws Exception {
         CompletionParams p = new CompletionParams();
         p.setPosition(new Position(1, 1));
         p.setTextDocument(new TextDocumentIdentifier("test/foo.txt"));
@@ -75,7 +75,7 @@ class LauncherTest {
         server.expectedRequests.put("textDocument/completion", new Pair<>(p, result));
         CompletableFuture<Either<List<CompletionItem>, CompletionList>> future = clientLauncher.getRemoteProxy().getTextDocumentService().completion(p);
         assertThat(future.get(TIMEOUT, TimeUnit.MILLISECONDS).toString()).isEqualTo(Either.forRight(result).toString());
-        client.joinOnEmpty();
+        server.joinOnEmpty();
     }
 
 
@@ -105,7 +105,7 @@ class LauncherTest {
         public void joinOnEmpty() {
             long before = System.currentTimeMillis();
             do {
-                if (expectedNotifications.isEmpty() && expectedNotifications.isEmpty()) {
+                if (expectedRequests.isEmpty() && expectedNotifications.isEmpty()) {
                     return;
                 }
                 try {

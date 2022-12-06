@@ -23,7 +23,7 @@ class DRLCompletionHelperTest {
 
     @Disabled("TBD")
     @Test
-    void testGetCompletionItems() {
+    void getCompletionItems() {
         // TODO
         String text = "rule MyRule when Dog(name == \"Bart\") then end";
         CompletionParams completionParams = new CompletionParams();
@@ -37,11 +37,6 @@ class DRLCompletionHelperTest {
         List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(text, caretPosition, getLanguageClient());
         CompletionItem completionItem = result.get(0);
         assertThat(completionItem.getInsertText()).isEqualTo("suggestion");
-    }
-
-    @Test
-    void testTestGetCompletionItems() {
-        // TODO
     }
 
     private LanguageClient getLanguageClient() {
