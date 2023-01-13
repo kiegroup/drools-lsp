@@ -1,0 +1,43 @@
+name: Drools LSP
+
+on:
+  pull_request:
+    paths-ignore:
+      - 'LICENSE'
+      - '**/.gitignore'
+      - '**.md'
+      - '**.adoc'
+      - '*.txt'
+      - 'docsimg/**'
+      - '.ci/jenkins/**'
+
+jobs:
+  drools-build:
+    concurrency:
+      group: drools-lsp-${{ matrix.os }}_pr-${{ github.head_ref }}
+      cancel-in-progress: true
+    timeout-minutes: 120
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        java-version: [11]
+        maven-version: ['3.8.6']
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.os }} - Java ${{ matrix.java-version }} - Maven
+    steps:
+      - name: Clean Disk Space
+        uses: kiegroup/kogito-pipelines/.ci/actions/ubuntu-disk-space@main
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+      - name: Support long paths
+        if: ${{ matrix.os == 'windows-latest' }}
+        uses: kiegroup/kogito-pipelines/.ci/actions/long-paths@main
+      - name: Java and Maven Setup
+        uses: kiegroup/kogito-pipelines/.ci/actions/maven@main
+        with:
+          java-version: ${{ matrix.java-version }}
+          maven-version: ${{ matrix.maven-version }}
+          cache-key-prefix: ${{ runner.os }}-${{ matrix.java-version }}-maven${{ matrix.maven-version }}
+      - uses: actions/checkout@v3
+      - name: Build with Maven
+        run: mvn -B clean install
