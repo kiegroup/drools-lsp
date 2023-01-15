@@ -62,6 +62,11 @@
           <descriptorRefs>
             <descriptorRef>jar-with-dependencies</descriptorRef>
           </descriptorRefs>
+          <archive>
+            <manifest>
+              <mainClass>org.drools.lsp.server.Main</mainClass>
+            </manifest>
+          </archive>
         </configuration>
 
         <executions>
