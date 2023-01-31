@@ -2,6 +2,7 @@
   "name": "drools",
   "displayName": "drools",
   "description": "",
+  "publisher": "kie-group",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.62.0"
