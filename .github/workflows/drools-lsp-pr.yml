@@ -42,6 +42,11 @@ jobs:
       - name: Build with Maven
         run: mvn -B clean install
 
+      - name: Set up Java
+        uses: actions/setup-java@v1
+        with:
+          java-version: ${{ matrix.java-version }}
+
       - name: Install Node.js
         uses: actions/setup-node@v3
         with:
