@@ -19,7 +19,8 @@ jobs:
     timeout-minutes: 120
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        #os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-latest]
         java-version: [11]
         maven-version: ['3.8.6']
       fail-fast: false
@@ -46,6 +47,17 @@ jobs:
         uses: actions/setup-java@v1
         with:
           java-version: ${{ matrix.java-version }}
+
+      - name: Check Java version
+        run: java -version
+
+      - name: Set Java Home
+        env:
+          JAVA_HOME: $(readlink -f $(which java))/../..
+        if: runner.os == 'macOS'
+
+      - name: Echo JAVA_HOME
+        run: echo "JAVA_HOME | $JAVA_HOME"
 
       - name: Install Node.js
         uses: actions/setup-node@v3
