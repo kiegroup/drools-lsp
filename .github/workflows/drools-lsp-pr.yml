@@ -19,8 +19,7 @@ jobs:
     timeout-minutes: 120
     strategy:
       matrix:
-        #os: [macos-latest, ubuntu-latest, windows-latest]
-        os: [macos-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
         java-version: [11]
         maven-version: ['3.8.6']
       fail-fast: false
@@ -43,33 +42,25 @@ jobs:
       - name: Build with Maven
         run: mvn -B clean install
 
-      - name: Set up Java
-        uses: actions/setup-java@v1
-        with:
-          java-version: ${{ matrix.java-version }}
-
-      - name: Check Java version
-        run: java -version
-
-      - name: Set Java Home
-        env:
-          JAVA_HOME: $(readlink -f $(which java))/../..
-        if: runner.os == 'macOS'
-
-      - name: Echo JAVA_HOME
-        run: echo "JAVA_HOME | $JAVA_HOME"
-
       - name: Install Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 16.x
+
       - run: npm install
         working-directory: ./client
+
       - name: Extension E2E Test for Linux
         run: xvfb-run -a npm test
         working-directory: ./client
         if: runner.os == 'Linux'
-      - name: Extension E2E Test
+
+      - name: Extension E2E Test for Windows
         run: npm test
         working-directory: ./client
-        if: runner.os != 'Linux'
+        if: runner.os == 'Windows'
+
+      - name: Extension E2E Test for MacOS
+        run: GHA_JAVA_HOME=$JAVA_HOME npm test
+        working-directory: ./client
+        if: runner.os == 'macOS'

@@ -84,11 +84,19 @@ export function deactivate() {
 }
 
 function getJavaHome() : string | undefined {
+
     let javaHome: string | undefined;
 
     javaHome = vscode.workspace.getConfiguration().get('java.home');
     if (javaHome) {
         console.log('java.home from workspace configuration : ' + javaHome);
+        return javaHome;
+    }
+
+    // GHA_JAVA_HOME is to specify JAVA_HOME for Github Action (MacOS changes JAVA_HOME internally)
+    javaHome = process.env.GHA_JAVA_HOME;
+    if (javaHome) {
+        console.log('GHA_JAVA_HOME from process env : ' + javaHome);
         return javaHome;
     }
 
