@@ -37,8 +37,6 @@ export function activate(context: vscode.ExtensionContext) {
         };
     } else {
         console.log('Starting without debug');
-        // Name of the launcher class which contains the main.
-        const main: string = 'org.drools.lsp.server.DroolsLspLauncher';
 
         const javaHome = getJavaHome();
 
@@ -50,12 +48,12 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         // path to the launcher.jar
-        let classPath = path.join(__dirname, '..', '..', 'drools-lsp-server', 'target', 'drools-lsp-server-jar-with-dependencies.jar');
-        const args: string[] = ['-cp', classPath];
+        let serverJar = path.join(__dirname, '..', '..', 'drools-lsp-server', 'target', 'drools-lsp-server-jar-with-dependencies.jar');
+        const args: string[] = ['-jar', serverJar];
 
         serverOptions = {
             command: executable,
-            args: [...args, main],
+            args: [...args],
             options: {}
         };
     }
