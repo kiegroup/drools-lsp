@@ -3,6 +3,7 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
@@ -45,10 +46,18 @@ export function activate(context: vscode.ExtensionContext) {
         if (javaHome) {
             // If java home is available, compose a path
             executable = path.join(javaHome, 'bin', 'java');
+        } else {
+            console.warn('java home is not found. Invoking java without path.');
         }
 
         // path to the launcher.jar
         let serverJar = path.join(__dirname, '..', '..', 'drools-lsp-server', 'target', 'drools-lsp-server-jar-with-dependencies.jar');
+        if (fs.existsSync(serverJar)) {
+            console.log(`${serverJar} exists`);
+        } else {
+            console.error(`${serverJar} does not exist : The extension won't work`);
+            return;
+        }
         const args: string[] = ['-jar', serverJar];
 
         serverOptions = {
@@ -104,6 +113,6 @@ function getJavaHome() : string | undefined {
         return javaHome;
     }
 
-    console.log('java home is not found. Invoke without path.');
+    console.log('java home is not found');
     return javaHome; // undefined
 }
