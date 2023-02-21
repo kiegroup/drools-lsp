@@ -3,6 +3,7 @@
  * Licensed under the MIT License. See License.txt in the project root for license information.
  * ------------------------------------------------------------------------------------------ */
 
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
@@ -37,27 +38,33 @@ export function activate(context: vscode.ExtensionContext) {
         };
     } else {
         console.log('Starting without debug');
-        // Name of the launcher class which contains the main.
-        const main: string = 'org.drools.lsp.server.DroolsLspLauncher';
 
-        const {JAVA_HOME} = process.env;
+        const javaHome = getJavaHome();
 
-        // If java home is available continue.
-        if (JAVA_HOME) {
-            // If java home is available continue.
-            console.log(`Using java from JAVA_HOME: ${JAVA_HOME}`);
-            let excecutable: string = path.join(JAVA_HOME, 'bin', 'java');
+        let executable: string = `java`;
 
-            // path to the launcher.jar
-            let classPath = path.join(__dirname, '..', '..', 'drools-lsp-server', 'target', 'drools-lsp-server-jar-with-dependencies.jar');
-            const args: string[] = ['-cp', classPath];
-
-            serverOptions = {
-                command: excecutable,
-                args: [...args, main],
-                options: {}
-            };
+        if (javaHome) {
+            // If java home is available, compose a path
+            executable = path.join(javaHome, 'bin', 'java');
+        } else {
+            console.warn('java home is not found. Invoking java without path.');
         }
+
+        // path to the launcher.jar
+        let serverJar = path.join(__dirname, '..', '..', 'drools-lsp-server', 'target', 'drools-lsp-server-jar-with-dependencies.jar');
+        if (fs.existsSync(serverJar)) {
+            console.log(`${serverJar} exists`);
+        } else {
+            console.error(`${serverJar} does not exist : The extension won't work`);
+            return;
+        }
+        const args: string[] = ['-jar', serverJar];
+
+        serverOptions = {
+            command: executable,
+            args: [...args],
+            options: {}
+        };
     }
 
     if (serverOptions) {
@@ -81,4 +88,31 @@ export function activate(context: vscode.ExtensionContext) {
 // this method is called when your extension is deactivated
 export function deactivate() { 
 	console.log('Your extension "drl" is now deactivated!');
+}
+
+function getJavaHome() : string | undefined {
+
+    let javaHome: string | undefined;
+
+    javaHome = vscode.workspace.getConfiguration().get('java.home');
+    if (javaHome) {
+        console.log('java.home from workspace configuration : ' + javaHome);
+        return javaHome;
+    }
+
+    // GHA_JAVA_HOME is to specify JAVA_HOME for Github Action (MacOS changes JAVA_HOME internally)
+    javaHome = process.env.GHA_JAVA_HOME;
+    if (javaHome) {
+        console.log('GHA_JAVA_HOME from process env : ' + javaHome);
+        return javaHome;
+    }
+
+    javaHome = process.env.JAVA_HOME;
+    if (javaHome) {
+        console.log('JAVA_HOME from process env : ' + javaHome);
+        return javaHome;
+    }
+
+    console.log('java home is not found');
+    return javaHome; // undefined
 }
