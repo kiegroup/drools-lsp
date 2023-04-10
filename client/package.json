@@ -1,9 +1,13 @@
 {
-  "name": "drools",
-  "displayName": "drools",
-  "description": "",
+  "name": "vscode-extension-drl-editor",
+  "displayName": "DRL Editor",
+  "description": "Edit DRL (Drools Rule Language) files",
   "publisher": "kie-group",
-  "version": "0.0.1",
+  "version": "1.0.0-alpha",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kiegroup/drools-lsp.git"
+  },
   "engines": {
     "vscode": "^1.62.0"
   },
@@ -17,7 +21,7 @@
   "contributes": {
     "commands": [
       {
-        "command": "extension.drools",
+        "command": "extension.vscode-extension-drl-editor",
         "title": "DRL"
       }
     ],
@@ -40,6 +44,9 @@
         "scopeName": "source.drools",
         "path": "./syntaxes/drl.tmLanguage"
       }
+    ],
+    "javaExtensions": [
+      "./lib/drools-lsp-server-jar-with-dependencies.jar"
     ]
   },
   "scripts": {

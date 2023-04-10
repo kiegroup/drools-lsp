@@ -51,7 +51,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         // path to the launcher.jar
-        let serverJar = path.join(__dirname, '..', '..', 'drools-lsp-server', 'target', 'drools-lsp-server-jar-with-dependencies.jar');
+        let serverJar = path.join(__dirname, "..", 'lib', 'drools-lsp-server-jar-with-dependencies.jar');
         if (fs.existsSync(serverJar)) {
             console.log(`${serverJar} exists`);
         } else {

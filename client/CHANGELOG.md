@@ -1,9 +1,5 @@
 # Change Log
 
-All notable changes to the "drools" extension will be documented in this file.
+## 1.0.0-alpha
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
-## [Unreleased]
-
-- Initial release
+- This is an alpha SNAPSHOT release, so the latest alpha will include all the latest changes.
