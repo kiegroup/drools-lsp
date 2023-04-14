@@ -14,6 +14,6 @@ This extension provides syntax highlighting and code completion for DRL files.
 
 ## Release Notes
 
-### 1.0.0-alpha
+### 1.0.0-alpha (Development Build)
 
 This is an alpha SNAPSHOT release, so the latest SNAPSHOT will include all the latest changes.
