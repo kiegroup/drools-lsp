@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - "main"
+      - "DROOLS-7396-test2"
 
 jobs:
   build:
