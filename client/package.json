@@ -56,7 +56,7 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js",
-    "pack:dev": "mkdir staging; vsce package --githubBranch main --no-dependencies -o ./staging/"
+    "pack:dev": "mkdir ./dist; vsce package --githubBranch main --no-dependencies -o ./dist/"
   },
   "devDependencies": {
     "@types/glob": "^7.1.4",
