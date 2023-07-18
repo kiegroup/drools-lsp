@@ -40,6 +40,10 @@ public class ParserStringUtils {
     }
 
     public static String trimThen(String rhs) {
-        return rhs.substring("then".length());
+        if (rhs.startsWith("then")) {
+            return rhs.substring("then".length());
+        } else {
+            throw new DRLParserException("rhs has to start with 'then' : rhs = " + rhs);
+        }
     }
 }
