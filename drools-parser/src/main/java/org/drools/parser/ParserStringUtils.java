@@ -39,9 +39,9 @@ public class ParserStringUtils {
         return tokenStream.getText(ctx.start, ctx.stop);
     }
 
-    public static String trimThen(String rhs) {
-        if (rhs.startsWith("then")) {
-            return rhs.substring("then".length());
+    public static String trimThenAndEnd(String rhs) {
+        if (rhs.startsWith("then") && rhs.endsWith("end")) {
+            return rhs.substring("then".length(), rhs.length() - "end".length());
         } else {
             throw new DRLParserException("rhs has to start with 'then' : rhs = " + rhs);
         }

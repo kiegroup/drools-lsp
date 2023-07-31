@@ -30,11 +30,11 @@ import JavaLexer;
 DRL_UNIT : 'unit';
 DRL_FUNCTION : 'function';
 DRL_GLOBAL : 'global';
+DRL_DECLARE : 'declare';
 DRL_RULE : 'rule';
 DRL_QUERY : 'query';
 DRL_WHEN : 'when';
 DRL_THEN : 'then' -> pushMode(RHS);
-
 
 DRL_AND : 'and';
 DRL_OR : 'or';
@@ -117,5 +117,16 @@ DrlUnicodeEscape
 
 mode RHS;
 RHS_WS : [ \t\r\n\u000C]+ -> channel(HIDDEN);
-DRL_END : 'end' -> popMode;
+DRL_END : 'end' ;
+
+// If one of these keywords comes next to "end", the "end" is true "end" of RHS
+RHS_PACKAGE : 'package' -> type(PACKAGE), popMode;
+RHS_UNIT : 'unit' -> type(DRL_UNIT), popMode;
+RHS_IMPORT : 'import' -> type(IMPORT), popMode;
+RHS_GLOBAL : 'global' -> type(DRL_GLOBAL), popMode;
+RHS_DECLARE : 'declare' -> type(DRL_DECLARE), popMode;
+RHS_FUNCTION : 'function' -> type(DRL_FUNCTION), popMode;
+RHS_RULE : 'rule' -> type(DRL_RULE), popMode;
+RHS_QUERY : 'query' -> type(DRL_QUERY), popMode;
+
 RHS_CHUNK : ~[ \t\r\n\u000C]+ ;
