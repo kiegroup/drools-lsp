@@ -282,8 +282,7 @@ drlKeywordsSupportsRhs :  DRL_END | PACKAGE | DRL_UNIT | IMPORT | DRL_GLOBAL  | 
 rhs : DRL_THEN consequence ;
 
 consequence : (RHS_CHUNK | drlKeywordsSupportsRhs )* DRL_END
-              {_input.LT(1).getType() == EOF || statementKeywords.contains(_input.LT(1).getText())}?
-              {System.out.println("LT(1) : " + _input.LT(1));} ;
+              {_input.LT(1).getType() == EOF || statementKeywords.contains(_input.LT(1).getText())}? ;
 
 stringId : ( IDENTIFIER | DRL_STRING_LITERAL ) ;
 

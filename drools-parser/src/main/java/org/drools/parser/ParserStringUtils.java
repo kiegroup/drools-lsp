@@ -43,7 +43,7 @@ public class ParserStringUtils {
         if (rhs.startsWith("then") && rhs.endsWith("end")) {
             return rhs.substring("then".length(), rhs.length() - "end".length());
         } else {
-            throw new DRLParserException("rhs has to start with 'then' : rhs = " + rhs);
+            throw new DRLParserException("rhs has to start with 'then' and end with 'end' : rhs = " + rhs);
         }
     }
 }
