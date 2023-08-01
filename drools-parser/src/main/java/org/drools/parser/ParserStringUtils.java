@@ -39,7 +39,7 @@ public class ParserStringUtils {
         return tokenStream.getText(ctx.start, ctx.stop);
     }
 
-    public static String trimThenAndEnd(String rhs) {
+    public static String trimThen(String rhs) {
         if (rhs.startsWith("then")) {
             return rhs.substring("then".length());
         } else {
