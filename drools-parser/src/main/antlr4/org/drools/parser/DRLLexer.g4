@@ -117,16 +117,5 @@ DrlUnicodeEscape
 
 mode RHS;
 RHS_WS : [ \t\r\n\u000C]+ -> channel(HIDDEN);
-DRL_END : 'end' ;
-
-// If one of these keywords comes next to "end", the "end" is true "end" of RHS
-RHS_PACKAGE : 'package' -> type(PACKAGE), popMode;
-RHS_UNIT : 'unit' -> type(DRL_UNIT), popMode;
-RHS_IMPORT : 'import' -> type(IMPORT), popMode;
-RHS_GLOBAL : 'global' -> type(DRL_GLOBAL), popMode;
-RHS_DECLARE : 'declare' -> type(DRL_DECLARE), popMode;
-RHS_FUNCTION : 'function' -> type(DRL_FUNCTION), popMode;
-RHS_RULE : 'rule' -> type(DRL_RULE), popMode;
-RHS_QUERY : 'query' -> type(DRL_QUERY), popMode;
-
+DRL_END : 'end' [ \t]* ('\n' | '\r\n' | EOF) {setText("end");} -> popMode;
 RHS_CHUNK : ~[ \t\r\n\u000C]+ ;

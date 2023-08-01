@@ -4,11 +4,6 @@ options { tokenVocab=DRLLexer; }
 
 import JavaParser;
 
-
-@members {
-    List<String> statementKeywords = java.util.Arrays.asList(new String[]{"package", "unit", "import", "global", "declare", "function", "rule", "query"});
-}
-
     /*
      * statement := importStatement
      *           |  globalStatement
@@ -39,7 +34,7 @@ globaldef : DRL_GLOBAL type drlIdentifier SEMI? ;
 
 // rule := RULE stringId (EXTENDS stringId)? annotation* attributes? lhs? rhs END
 
-ruledef : DRL_RULE name=stringId (EXTENDS stringId)? drlAnnotation* attributes? lhs rhs ;
+ruledef : DRL_RULE name=stringId (EXTENDS stringId)? drlAnnotation* attributes? lhs rhs DRL_END ;
 
 lhs : DRL_WHEN lhsExpression? ;
 lhsExpression : lhsOr+ ;
@@ -276,13 +271,9 @@ lhsExists : DRL_EXISTS lhsPatternBind ;
 */
 lhsNot : DRL_NOT lhsPatternBind ;
 
-// See mode RHS in Lexer
-drlKeywordsSupportsRhs :  DRL_END | PACKAGE | DRL_UNIT | IMPORT | DRL_GLOBAL  | DRL_DECLARE | DRL_FUNCTION | DRL_RULE | DRL_QUERY ;
-
 rhs : DRL_THEN consequence ;
 
-consequence : (RHS_CHUNK | drlKeywordsSupportsRhs )* DRL_END
-              {_input.LT(1).getType() == EOF || statementKeywords.contains(_input.LT(1).getText())}? ;
+consequence : RHS_CHUNK* ;
 
 stringId : ( IDENTIFIER | DRL_STRING_LITERAL ) ;
 

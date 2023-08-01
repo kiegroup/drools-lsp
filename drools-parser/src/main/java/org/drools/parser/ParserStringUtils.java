@@ -40,10 +40,10 @@ public class ParserStringUtils {
     }
 
     public static String trimThenAndEnd(String rhs) {
-        if (rhs.startsWith("then") && rhs.endsWith("end")) {
-            return rhs.substring("then".length(), rhs.length() - "end".length());
+        if (rhs.startsWith("then")) {
+            return rhs.substring("then".length());
         } else {
-            throw new DRLParserException("rhs has to start with 'then' and end with 'end' : rhs = " + rhs);
+            throw new DRLParserException("rhs has to start with 'then' : rhs = " + rhs);
         }
     }
 }
