@@ -1389,7 +1389,6 @@ class MiscDRLParserTest {
         assertThat((String) rule.getConsequence()).isEqualToIgnoringWhitespace( "System.out.println( \"Mark and Michael\" + bar );");
     }
 
-    @Disabled("Priority : High | Failed to parse complex parentheses")
     @Test
     public void parse_BracketsPrecedence() throws Exception {
         final PackageDescr pkg = parseAndGetPackageDescrFromFile(
