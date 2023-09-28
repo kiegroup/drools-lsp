@@ -3019,7 +3019,6 @@ class MiscDRLParserTest {
         assertThat(declarations.size()).isEqualTo(3);
     }
 
-    @Disabled("Priority : Mid | Implement Descr position")
     @Test
     public void parse_NullConstraints() throws Exception {
         final String text = "rule X when Person( name == null ) then end";
@@ -3033,7 +3032,6 @@ class MiscDRLParserTest {
         assertThat(fcd.getType()).isEqualTo(ExprConstraintDescr.Type.NAMED);
     }
 
-    @Disabled("Priority : High | Implement positional constraint")
     @Test
     public void parse_PositionalConstraintsOnly() throws Exception {
         final String text = "rule X when Person( \"Mark\", 42; ) then end";
@@ -3130,7 +3128,6 @@ class MiscDRLParserTest {
         assertThat(ann.getValue()).isEqualTo("\"val1\", \"val2\"");
     }
 
-    @Disabled("Priority : High | Implement positional constraint")
     @Test
     public void parse_PositionalsAndNamedConstraints() throws Exception {
         final String text = "rule X when Person( \"Mark\", 42; location == \"atlanta\" ) then end";
