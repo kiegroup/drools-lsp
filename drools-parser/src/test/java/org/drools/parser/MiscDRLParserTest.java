@@ -2170,7 +2170,6 @@ class MiscDRLParserTest {
         assertThat(((FromDescr) cheese.getSource()).getDataSource().toString()).isEqualTo("$cheesery");
     }
 
-    @Disabled("Priority : High | Implement memberOf")
     @Test
     public void parse_Memberof() throws Exception {
         final String text = "rule X when Country( $cities : city )\nPerson( city memberOf $cities )\n then end";
@@ -2184,7 +2183,6 @@ class MiscDRLParserTest {
         assertThat(fieldConstr.getExpression()).isEqualTo("city memberOf $cities");
     }
 
-    @Disabled("Priority : High | Implement not memberOf")
     @Test
     public void parse_NotMemberof() throws Exception {
         final String text = "rule X when Country( $cities : city )\nPerson( city not memberOf $cities ) then end\n";
