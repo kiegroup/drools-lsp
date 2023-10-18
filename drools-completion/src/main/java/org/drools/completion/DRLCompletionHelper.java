@@ -61,10 +61,10 @@ public class DRLCompletionHelper {
     static CompletionItem createCompletionItem(String label, CompletionItemKind itemKind) {
         CompletionItem completionItem;
         completionItem = new CompletionItem();
-        if (label.startsWith("drl_")) {
-            // when Lexer uses "DRL_" keywords in multiple modes with type(),
+        if (label.startsWith("drl_rhs_")) {
+            // when Lexer uses "DRL_RHS_" keywords in multiple modes with type(),
             // drlParser.getVocabulary().getDisplayName() returns the keyword name as-is (symbolicNames), so remove the prefix.
-            label = label.substring("drl_".length());
+            label = label.substring("drl_rhs_".length());
         }
         completionItem.setInsertText(label);
         completionItem.setLabel(label);
