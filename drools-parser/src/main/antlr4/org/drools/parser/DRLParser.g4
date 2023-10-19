@@ -439,12 +439,15 @@ drlElementValue
     ;
 
 attributes : attribute ( COMMA? attribute )* ;
-attribute : ( 'salience' DECIMAL_LITERAL )
-          | ( 'enabled' | 'no-loop' | 'auto-focus' | 'lock-on-active' | 'refract' | 'direct' ) BOOL_LITERAL?
-          | ( 'agenda-group' | 'activation-group' | 'ruleflow-group' | 'date-effective' | 'date-expires' | 'dialect' ) DRL_STRING_LITERAL
-          |   'calendars' DRL_STRING_LITERAL ( COMMA DRL_STRING_LITERAL )*
-          |   'timer' ( DECIMAL_LITERAL | TEXT )
-          |   'duration' ( DECIMAL_LITERAL | TEXT ) ;
+attribute : name=( 'salience' | 'enabled' ) conditionalOrExpression #expressionAttribute
+          | name=( 'no-loop' | 'auto-focus' | 'lock-on-active' | 'refract' | 'direct' ) BOOL_LITERAL? #booleanAttribute
+          | name=( 'agenda-group' | 'activation-group' | 'ruleflow-group' | 'date-effective' | 'date-expires' | 'dialect' ) DRL_STRING_LITERAL #stringAttribute
+          | name='calendars' DRL_STRING_LITERAL ( COMMA DRL_STRING_LITERAL )* #stringListAttribute
+          | name='timer' ( DECIMAL_LITERAL | chunk ) #intOrChunkAttribute
+          | name='duration' ( DECIMAL_LITERAL | TIME_INTERVAL | LPAREN TIME_INTERVAL RPAREN ) #durationAttribute
+          ;
+
+chunk : LPAREN .+? RPAREN;
 
 assignmentOperator : ASSIGN
                    |   ADD_ASSIGN
