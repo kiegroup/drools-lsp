@@ -116,7 +116,7 @@ lhsUnary : (
            | lhsPatternBind
            ) SEMI? ;
 
-lhsPatternBind : label? ( LPAREN lhsPattern (DRL_OR lhsPattern)* RPAREN | lhsPattern ) ;
+lhsPatternBind : (label|unif)? ( LPAREN lhsPattern (DRL_OR lhsPattern)* RPAREN | lhsPattern ) ;
 
 /*
 lhsPattern : xpathPrimary (OVER patternFilter)? |
@@ -253,6 +253,7 @@ drlExpression
     | drlExpression bop=INSTANCEOF (typeType | pattern)
     | drlExpression bop=DRL_MATCHES drlExpression
     | drlExpression DRL_NOT? DRL_MEMBEROF drlExpression
+    | drlExpression bop=DRL_UNIFY drlExpression
     | drlExpression bop=(EQUAL | NOTEQUAL) drlExpression
     | drlExpression bop=BITAND drlExpression
     | drlExpression bop=CARET drlExpression
@@ -457,7 +458,7 @@ assignmentOperator : ASSIGN
                    |   LT LT ASSIGN ;
 
 label : IDENTIFIER COLON ;
-unif : IDENTIFIER UNIFY ;
+unif : IDENTIFIER DRL_UNIFY ;
 
 /* extending JavaParser variableInitializer */
 drlVariableInitializer

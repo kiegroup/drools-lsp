@@ -95,10 +95,9 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
                 packageDescr.addWindowDeclaration((WindowDeclarationDescr) descr);
             } else if (descr instanceof AttributeDescr) {
                 packageDescr.addAttribute((AttributeDescr) descr);
-            } else if (descr instanceof RuleDescr) {
+            } else if (descr instanceof RuleDescr) { // QueryDescr extends RuleDescr
                 packageDescr.addRule((RuleDescr) descr);
-            } else if (descr instanceof QueryDescr) {
-                packageDescr.addRule((QueryDescr) descr);
+                packageDescr.afterRuleAdded((RuleDescr) descr);
             }
         });
     }
@@ -338,6 +337,9 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
                 .orElseThrow(() -> new IllegalStateException("lhsPatternBind must have at least one lhsPattern : " + ctx.getText()));
         if (ctx.label() != null) {
             patternDescr.setIdentifier(ctx.label().IDENTIFIER().getText());
+        } else if (ctx.unif() != null) {
+            patternDescr.setIdentifier(ctx.unif().IDENTIFIER().getText());
+            patternDescr.setUnification(true);
         }
         return patternDescr;
     }

@@ -1905,7 +1905,6 @@ class MiscDRLParserTest {
         pat.getConstraint();
     }
 
-    @Disabled("Priority : High | Parse attribute agenda-group")
     @Test
     public void parse_PackageAttributes() throws Exception {
         final PackageDescr pkg = parseAndGetPackageDescrFromFile(
@@ -3132,7 +3131,6 @@ class MiscDRLParserTest {
 
     }
 
-    @Disabled("Priority : High | Implement unification")
     @Test
     public void parse_UnificationBinding() throws Exception {
         final String text = "rule X when $p := Person( $name := name, $loc : location ) then end";

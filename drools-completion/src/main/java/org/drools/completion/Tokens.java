@@ -10,7 +10,7 @@ public class Tokens {
     public static Set<Integer> IGNORED = Set.of(
             Token.EPSILON, Token.EOF, Token.INVALID_TYPE,
 
-            DRLLexer.TIME_INTERVAL, DRLLexer.HASH, DRLLexer.UNIFY, DRLLexer.NULL_SAFE_DOT, DRLLexer.QUESTION_DIV, DRLLexer.MISC,
+            DRLLexer.TIME_INTERVAL, DRLLexer.HASH, DRLLexer.DRL_UNIFY, DRLLexer.NULL_SAFE_DOT, DRLLexer.QUESTION_DIV, DRLLexer.MISC,
 
             DRLLexer.DECIMAL_LITERAL, DRLLexer.HEX_LITERAL,
             DRLLexer.OCT_LITERAL, DRLLexer.BINARY_LITERAL, DRLLexer.FLOAT_LITERAL, DRLLexer.HEX_FLOAT_LITERAL,
