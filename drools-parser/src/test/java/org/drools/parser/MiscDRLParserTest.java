@@ -1686,7 +1686,6 @@ class MiscDRLParserTest {
         assertThat(at.getValue()).isEqualTo("true");
     }
 
-    @Disabled("Priority : High | Parse attribute with parentheses")
     @Test
     public void parse_Attributes2() throws Exception {
         final PackageDescr pkg = parseAndGetPackageDescrFromFile(
@@ -2084,7 +2083,6 @@ class MiscDRLParserTest {
         assertThat((String) rule.getConsequence()).isEqualToIgnoringWhitespace( expected);
     }
 
-    @Disabled("Priority : High | parse nested parentheses")
     @Test
     public void parse_NestedCEs() throws Exception {
         final RuleDescr rule = parseAndGetFirstRuleDescrFromFile(
@@ -2835,7 +2833,6 @@ class MiscDRLParserTest {
 
     }
 
-    @Disabled("Priority : High | Failed to parse or with parentheses in LHS")
     @Test
     public void parse_RuleWithLHSNesting() throws Exception {
         final PackageDescr pkg = parseAndGetPackageDescrFromFile(
@@ -2941,7 +2938,6 @@ class MiscDRLParserTest {
         assertThat(descr.getParameters().get(0)).isEqualTo("10");
     }
 
-    @Disabled("Priority : Mid | outmost parentheses")
     @Test
     public void parse_RuleOldSyntax1() throws Exception {
         final String source = "rule \"Test\" when ( not $r :LiteralRestriction( operator == Operator.EQUAL ) ) then end";
@@ -2963,7 +2959,6 @@ class MiscDRLParserTest {
         assertThat(fieldConstraintDescr.getExpression()).isEqualToIgnoringWhitespace("operator == Operator.EQUAL");
     }
 
-    @Disabled("Priority : Mid | outmost parentheses")
     @Test
     public void parse_RuleOldSyntax2() throws Exception {
         final String source = "rule \"Test\" when ( $r :LiteralRestriction( operator == Operator.EQUAL ) ) then end";

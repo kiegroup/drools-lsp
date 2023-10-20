@@ -40,7 +40,6 @@ import org.drools.drl.ast.descr.TypeDeclarationDescr;
 import org.drools.drl.ast.descr.TypeFieldDescr;
 import org.drools.drl.ast.descr.UnitDescr;
 import org.drools.drl.ast.descr.WindowDeclarationDescr;
-import org.drools.util.StringUtils;
 
 import static org.drools.parser.DRLParserHelper.getTextWithoutErrorNode;
 import static org.drools.parser.ParserStringUtils.getTextPreservingWhitespace;
@@ -577,16 +576,26 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
     @Override
     public ExistsDescr visitLhsExists(DRLParser.LhsExistsContext ctx) {
         ExistsDescr existsDescr = new ExistsDescr();
-        BaseDescr descr = visitLhsPatternBind(ctx.lhsPatternBind());
-        existsDescr.addDescr(descr);
+        if (ctx.lhsOrDef() != null) {
+            BaseDescr descr = visitDescrChildren(ctx.lhsOrDef()).get(0);
+            existsDescr.addDescr(descr);
+        } else {
+            BaseDescr descr = visitLhsPatternBind(ctx.lhsPatternBind());
+            existsDescr.addDescr(descr);
+        }
         return existsDescr;
     }
 
     @Override
     public NotDescr visitLhsNot(DRLParser.LhsNotContext ctx) {
         NotDescr notDescr = new NotDescr();
-        BaseDescr descr = visitLhsPatternBind(ctx.lhsPatternBind());
-        notDescr.addDescr(descr);
+        if (ctx.lhsOrDef() != null) {
+            BaseDescr descr = visitDescrChildren(ctx.lhsOrDef()).get(0);
+            notDescr.addDescr(descr);
+        } else {
+            BaseDescr descr = visitLhsPatternBind(ctx.lhsPatternBind());
+            notDescr.addDescr(descr);
+        }
         return notDescr;
     }
 
@@ -602,26 +611,69 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public BaseDescr visitLhsOr(DRLParser.LhsOrContext ctx) {
-        OrDescr orDescr = new OrDescr();
-        List<BaseDescr> descrList = visitDescrChildren(ctx);
-        descrList.forEach(orDescr::addDescr);
-        return orDescr;
+        List<DescrNodePair> descrList = visitDescrChildrenForDescrNodePair(ctx);
+        if (descrList.size() == 1) {
+            // Avoid nested OrDescr
+            return descrList.get(0).getDescr();
+        } else {
+            OrDescr orDescr = new OrDescr();
+            List<BaseDescr> flattenedDescrs = flattenOrDescr(descrList);
+            flattenedDescrs.forEach(orDescr::addDescr);
+            return orDescr;
+        }
+    }
+
+    private List<BaseDescr> flattenOrDescr(List<DescrNodePair> descrList) {
+        List<BaseDescr> flattenedDescrs = new ArrayList<>();
+        for (DescrNodePair descrNodePair : descrList) {
+            BaseDescr descr = descrNodePair.getDescr();
+            ParseTree node = descrNodePair.getNode();
+            if (descr instanceof OrDescr && !(node instanceof DRLParser.LhsExpressionEnclosedContext)) {
+                // sibling OrDescr should be flattened
+                flattenedDescrs.addAll(((OrDescr) descr).getDescrs());
+            } else {
+                flattenedDescrs.add(descr);
+            }
+        }
+        return flattenedDescrs;
     }
 
     @Override
     public BaseDescr visitLhsAnd(DRLParser.LhsAndContext ctx) {
-        return createAndDescr(visitDescrChildren(ctx));
+        return createAndDescr(ctx);
     }
 
-    private AndDescr createAndDescr(List<BaseDescr> descrList) {
-        AndDescr andDescr = new AndDescr();
-        descrList.forEach(andDescr::addDescr);
-        return andDescr;
+    private BaseDescr createAndDescr(ParserRuleContext ctx) {
+        List<DescrNodePair> descrList = visitDescrChildrenForDescrNodePair(ctx);
+        if (descrList.size() == 1) {
+            // Avoid nested AndDescr
+            return descrList.get(0).getDescr();
+        } else {
+            AndDescr andDescr = new AndDescr();
+            List<BaseDescr> flattenedDescrs = flattenAndDescr(descrList);
+            flattenedDescrs.forEach(andDescr::addDescr);
+            return andDescr;
+        }
+    }
+
+    private List<BaseDescr> flattenAndDescr(List<DescrNodePair> descrList) {
+        List<BaseDescr> flattenedDescrs = new ArrayList<>();
+        for (DescrNodePair descrNodePair : descrList) {
+            BaseDescr descr = descrNodePair.getDescr();
+            ParseTree node = descrNodePair.getNode();
+            if (descr instanceof AndDescr && !(node instanceof DRLParser.LhsExpressionEnclosedContext)) {
+                // sibling AndDescr should be flattened
+                flattenedDescrs.addAll(((AndDescr) descr).getDescrs());
+            } else {
+                flattenedDescrs.add(descr);
+            }
+        }
+        return flattenedDescrs;
     }
 
     @Override
     public BaseDescr visitLhsAndDef(DRLParser.LhsAndDefContext ctx) {
-        return createAndDescr(visitDescrChildren(ctx));
+        return createAndDescr(ctx);
     }
 
     @Override
@@ -648,6 +700,39 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
             }
         }
         return aggregator;
+    }
+
+    // This method is used when the parent descr requires children node information for composing the descr.
+    private List<DescrNodePair> visitDescrChildrenForDescrNodePair(RuleNode node) {
+        List<DescrNodePair> aggregator = new ArrayList<>();
+        int n = node.getChildCount();
+
+        for (int i = 0; i < n && this.shouldVisitNextChild(node, aggregator); ++i) {
+            ParseTree c = node.getChild(i);
+            Object childResult = c.accept(this);
+            if (childResult instanceof BaseDescr) {
+                aggregator.add(new DescrNodePair((BaseDescr) childResult, c));
+            }
+        }
+        return aggregator;
+    }
+
+    private static class DescrNodePair {
+        private final BaseDescr descr;
+        private final ParseTree node;
+
+        private DescrNodePair(BaseDescr descr, ParseTree node) {
+            this.descr = descr;
+            this.node = node;
+        }
+
+        public BaseDescr getDescr() {
+            return descr;
+        }
+
+        public ParseTree getNode() {
+            return node;
+        }
     }
 
     // leaves of constraint concatenate return Strings
