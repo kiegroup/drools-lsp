@@ -1477,7 +1477,7 @@ class MiscDRLParserTest {
     }
 
     @Test
-    void parenthesesAndOrOrOrAnd() throws Exception {
+    void multipleLevelNestAndOrOrOrAnd() throws Exception {
         final String drl = "rule and_or_or_or_and\n" +
                 "  when\n" +
                 "     (Foo(x == 1) and (Bar(x == 2) or Foo(x == 3))) or (Bar(x == 4) or (Foo(x == 5) and Bar(x == 6)))\n" +
@@ -1514,6 +1514,79 @@ class MiscDRLParserTest {
         assertThat(foo3.getObjectType()).isEqualTo("Foo");
         final PatternDescr bar3 = (PatternDescr) rightAnd.getDescrs().get(1);
         assertThat(bar3.getObjectType()).isEqualTo("Bar");
+    }
+
+    @Test
+    void multipleLevelNestWithThreeOrSiblings() throws Exception {
+        final String drl = "rule nest_or_siblings\n" +
+                "  when\n" +
+                "     (A() or (B() or C() or (D() and E())))\n" +
+                "  then\n" +
+                "end";
+        PackageDescr pkg = parser.parse(drl);
+
+        assertThat(pkg.getRules()).hasSize(1);
+        final RuleDescr rule = (RuleDescr) pkg.getRules().get(0);
+        final AndDescr rootAnd = (AndDescr) rule.getLhs();
+        assertThat(rootAnd.getDescrs()).hasSize(1);
+
+        final OrDescr topOr = (OrDescr) rootAnd.getDescrs().get(0);
+        assertThat(topOr.getDescrs()).hasSize(2);
+
+        final PatternDescr leftPattern = (PatternDescr) topOr.getDescrs().get(0);
+        assertThat(leftPattern.getObjectType()).isEqualTo("A");
+
+        final OrDescr rightOr = (OrDescr) topOr.getDescrs().get(1);
+        assertThat(rightOr.getDescrs()).as("top level Or has 3 sibling children").hasSize(3);
+        final PatternDescr bPattern = (PatternDescr) rightOr.getDescrs().get(0);
+        assertThat(bPattern.getObjectType()).isEqualTo("B");
+        final PatternDescr cPattern = (PatternDescr) rightOr.getDescrs().get(1);
+        assertThat(cPattern.getObjectType()).isEqualTo("C");
+        final AndDescr deAnd = (AndDescr) rightOr.getDescrs().get(2);
+        assertThat(deAnd.getDescrs()).hasSize(2);
+
+        final PatternDescr dPattern = (PatternDescr) deAnd.getDescrs().get(0);
+        assertThat(dPattern.getObjectType()).isEqualTo("D");
+        final PatternDescr ePattern = (PatternDescr) deAnd.getDescrs().get(1);
+        assertThat(ePattern.getObjectType()).isEqualTo("E");
+    }
+
+    @Test
+    public void existsMultipleLevelNestWithThreeOrSiblings() throws Exception {
+        final String drl = "rule nest_or_siblings\n" +
+                "  when\n" +
+                "     exists(A() or (B() or C() or (D() and E())))\n" +
+                "  then\n" +
+                "end";
+        PackageDescr pkg = parser.parse(drl);
+
+        assertThat(pkg.getRules()).hasSize(1);
+        final RuleDescr rule = (RuleDescr) pkg.getRules().get(0);
+        final AndDescr rootAnd = (AndDescr) rule.getLhs();
+        assertThat(rootAnd.getDescrs()).hasSize(1);
+
+        final ExistsDescr topExists = (ExistsDescr) rootAnd.getDescrs().get(0);
+        assertThat(topExists.getDescrs()).hasSize(1);
+
+        final OrDescr topOr = (OrDescr) topExists.getDescrs().get(0);
+        assertThat(topOr.getDescrs()).hasSize(2);
+
+        final PatternDescr leftPattern = (PatternDescr) topOr.getDescrs().get(0);
+        assertThat(leftPattern.getObjectType()).isEqualTo("A");
+
+        final OrDescr rightOr = (OrDescr) topOr.getDescrs().get(1);
+        assertThat(rightOr.getDescrs()).hasSize(3);
+        final PatternDescr bPattern = (PatternDescr) rightOr.getDescrs().get(0);
+        assertThat(bPattern.getObjectType()).isEqualTo("B");
+        final PatternDescr cPattern = (PatternDescr) rightOr.getDescrs().get(1);
+        assertThat(cPattern.getObjectType()).isEqualTo("C");
+        final AndDescr deAnd = (AndDescr) rightOr.getDescrs().get(2);
+        assertThat(deAnd.getDescrs()).hasSize(2);
+
+        final PatternDescr dPattern = (PatternDescr) deAnd.getDescrs().get(0);
+        assertThat(dPattern.getObjectType()).isEqualTo("D");
+        final PatternDescr ePattern = (PatternDescr) deAnd.getDescrs().get(1);
+        assertThat(ePattern.getObjectType()).isEqualTo("E");
     }
 
     @Test
@@ -2834,9 +2907,8 @@ class MiscDRLParserTest {
     }
 
     @Test
-    public void parse_RuleWithLHSNesting() throws Exception {
-        final PackageDescr pkg = parseAndGetPackageDescrFromFile(
-                                                               "Rule_with_nested_LHS.drl" );
+    public void parenthesesOneLevelNestWithThreeSiblings() throws Exception {
+        final PackageDescr pkg = parseAndGetPackageDescrFromFile( "Rule_with_nested_LHS.drl" );
 
         assertThat(parser.hasErrors()).as(parser.getErrors().toString()).isFalse();
 
