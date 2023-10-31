@@ -48,6 +48,12 @@ import static org.drools.parser.ParserStringUtils.safeStripStringDelimiters;
 import static org.drools.parser.ParserStringUtils.trimThen;
 import static org.drools.util.StringUtils.unescapeJava;
 
+/**
+ * Visitor implementation for DRLParser.
+ * Basically, each visit method creates and returns a Descr object traversing the parse tree.
+ * Finally, visitCompilationUnit() returns a PackageDescr object.
+ * Try not to depend on DRLVisitorImpl's internal state for clean maintainability
+ */
 public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     private final TokenStream tokenStream;
@@ -56,10 +62,14 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
         this.tokenStream = tokenStream;
     }
 
+    /**
+     * Main entry point for creating PackageDescr from a parser tree.
+     */
     @Override
     public PackageDescr visitCompilationUnit(DRLParser.CompilationUnitContext ctx) {
         PackageDescr packageDescr = new PackageDescr();
         if (ctx.packagedef() != null) {
+            // package org.example
             packageDescr.setName(getTextWithoutErrorNode(ctx.packagedef().name));
         }
         List<BaseDescr> descrList = visitDescrChildren(ctx);
@@ -67,7 +77,11 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
         return packageDescr;
     }
 
+    /**
+     * Add all children Descr to PackageDescr
+     */
     private void applyChildrenDescrs(PackageDescr packageDescr, List<BaseDescr> descrList) {
+        // This bunch of if-blocks will be refactored by DROOLS-7564
         descrList.forEach(descr -> {
             if (descr instanceof UnitDescr) {
                 packageDescr.setUnit((UnitDescr) descr);
@@ -104,11 +118,13 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public UnitDescr visitUnitdef(DRLParser.UnitdefContext ctx) {
+        // unit HelloUnit;
         return new UnitDescr(ctx.name.getText());
     }
 
     @Override
     public GlobalDescr visitGlobaldef(DRLParser.GlobaldefContext ctx) {
+        // global List results;
         GlobalDescr globalDescr = new GlobalDescr(ctx.drlIdentifier().getText(), ctx.type().getText());
         populateStartEnd(globalDescr, ctx);
         return globalDescr;
@@ -118,11 +134,13 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
     public ImportDescr visitImportStandardDef(DRLParser.ImportStandardDefContext ctx) {
         String target = ctx.drlQualifiedName().getText() + (ctx.MUL() != null ? ".*" : "");
         if (ctx.DRL_FUNCTION() != null || ctx.STATIC() != null) {
+            // import static org.example.Utils.doSomething;
             FunctionImportDescr functionImportDescr = new FunctionImportDescr();
             functionImportDescr.setTarget(target);
             populateStartEnd(functionImportDescr, ctx);
             return functionImportDescr;
         } else {
+            // import org.example.Person;
             ImportDescr importDescr = new ImportDescr();
             importDescr.setTarget(target);
             populateStartEnd(importDescr, ctx);
@@ -132,6 +150,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public AccumulateImportDescr visitImportAccumulateDef(DRLParser.ImportAccumulateDefContext ctx) {
+        // import accumulate org.example.MyAccumulate calculate;
         AccumulateImportDescr accumulateImportDescr = new AccumulateImportDescr();
         accumulateImportDescr.setTarget(ctx.drlQualifiedName().getText());
         accumulateImportDescr.setFunctionName(ctx.IDENTIFIER().getText());
@@ -140,6 +159,9 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public FunctionDescr visitFunctiondef(DRLParser.FunctiondefContext ctx) {
+        // function String functionA(String s, Integer i) {
+        //    foo();
+        // }
         FunctionDescr functionDescr = new FunctionDescr();
         if (ctx.typeTypeOrVoid() != null) {
             functionDescr.setReturnType(ctx.typeTypeOrVoid().getText());
@@ -147,6 +169,8 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
             functionDescr.setReturnType("void");
         }
         functionDescr.setName(ctx.IDENTIFIER().getText());
+
+        // add function parameters
         DRLParser.FormalParametersContext formalParametersContext = ctx.formalParameters();
         DRLParser.FormalParameterListContext formalParameterListContext = formalParametersContext.formalParameterList();
         if (formalParameterListContext != null) {
@@ -163,11 +187,15 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public BaseDescr visitDeclaredef(DRLParser.DeclaredefContext ctx) {
-        return visitDescrChildren(ctx).get(0);
+        return visitDescrChildren(ctx).get(0); // only one child
     }
 
     @Override
     public TypeDeclarationDescr visitTypeDeclaration(DRLParser.TypeDeclarationContext ctx) {
+        // declare SomeFact
+        //    name : String
+        //    age: Integer
+        // end
         TypeDeclarationDescr typeDeclarationDescr = new TypeDeclarationDescr(ctx.name.getText());
         if (ctx.EXTENDS() != null) {
             typeDeclarationDescr.addSuperType(ctx.superType.getText());
@@ -183,6 +211,9 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public EntryPointDeclarationDescr visitEntryPointDeclaration(DRLParser.EntryPointDeclarationContext ctx) {
+        // declare entry-point myStream
+        //   @source("jndi://queues/events")
+        // end
         EntryPointDeclarationDescr entryPointDeclarationDescr = new EntryPointDeclarationDescr();
         entryPointDeclarationDescr.setEntryPointId(ctx.name.getText());
         ctx.drlAnnotation().stream()
@@ -193,6 +224,9 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public WindowDeclarationDescr visitWindowDeclaration(DRLParser.WindowDeclarationContext ctx) {
+        // declare window Ticks
+        //   $s : StockTick( source == "NYSE" ) over window:length( 10 ) from entry-point stStream
+        // end
         WindowDeclarationDescr windowDeclarationDescr = new WindowDeclarationDescr();
         windowDeclarationDescr.setName(ctx.name.getText());
         ctx.drlAnnotation().stream()
@@ -202,6 +236,9 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
         return windowDeclarationDescr;
     }
 
+    /**
+     * entry point for one rule
+     */
     @Override
     public RuleDescr visitRuledef(DRLParser.RuledefContext ctx) {
         RuleDescr ruleDescr = new RuleDescr(safeStripStringDelimiters(ctx.name.getText()));
@@ -228,20 +265,34 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
         if (ctx.rhs() != null) {
             ruleDescr.setConsequenceLocation(ctx.rhs().getStart().getLine(), ctx.rhs().getStart().getCharPositionInLine()); // location of "then"
-            ruleDescr.setConsequence(trimThen(getTextPreservingWhitespace(ctx.rhs())));
+            ruleDescr.setConsequence(trimThen(getTextPreservingWhitespace(ctx.rhs()))); // RHS is just a text
         }
 
         return ruleDescr;
     }
 
     private void slimLhsRootDescr(AndDescr root) {
+        // Root Descr is always AndDescr.
+        // For example, if there are nested AndDescr like
+        //  AndDescr
+        //  /\
+        // P  AndDescr
+        //     /\
+        //    P  P
+        // is slimmed down to
+        //  AndDescr
+        //  / | \
+        // P  P  P
         List<BaseDescr> descrList = new ArrayList<>(root.getDescrs());
         root.getDescrs().clear();
-        descrList.forEach(root::addOrMerge); // This slims down nested AndDescr
+        descrList.forEach(root::addOrMerge);
     }
 
     @Override
     public QueryDescr visitQuerydef(DRLParser.QuerydefContext ctx) {
+        // query "people under the age of 21"
+        //    $person : Person( age < 21 )
+        // end
         QueryDescr queryDescr = new QueryDescr(safeStripStringDelimiters(ctx.name.getText()));
 
         DRLParser.FormalParametersContext formalParametersContext = ctx.formalParameters();
@@ -268,6 +319,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public AnnotationDescr visitDrlAnnotation(DRLParser.DrlAnnotationContext ctx) {
+        //    @fooMeta1(barVal1)
         AnnotationDescr annotationDescr = new AnnotationDescr(ctx.name.getText());
         if (ctx.drlElementValue() != null) {
             annotationDescr.setValue(getTextPreservingWhitespace(ctx.drlElementValue())); // single value
@@ -279,6 +331,10 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public TypeFieldDescr visitField(DRLParser.FieldContext ctx) {
+        // declare Person
+        //    name   : String = "John Doe" @key @length( max = 50 )
+        //    age    : int    = -1         @ranged( min = 0, max = 150, unknown = -1 )
+        // end
         TypeFieldDescr typeFieldDescr = new TypeFieldDescr();
         typeFieldDescr.setFieldName(ctx.label().IDENTIFIER().getText());
         typeFieldDescr.setPattern(new PatternDescr(ctx.type().getText()));
@@ -292,6 +348,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
     }
 
     private void visitDrlElementValuePairs(DRLParser.DrlElementValuePairsContext ctx, AnnotationDescr annotationDescr) {
+        // @ranged( min = 0, max = 150, unknown = -1 )
         ctx.drlElementValuePair().forEach(pairCtx -> {
             String key = pairCtx.key.getText();
             String value = getTextPreservingWhitespace(pairCtx.value);
@@ -301,6 +358,8 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public AttributeDescr visitExpressionAttribute(DRLParser.ExpressionAttributeContext ctx) {
+        // salience (Integer.MIN_VALUE)
+        // enabled (Boolean.TRUE)
         AttributeDescr attributeDescr = new AttributeDescr(ctx.name.getText());
         attributeDescr.setValue(getTextPreservingWhitespace(ctx.conditionalOrExpression()));
         attributeDescr.setType(AttributeDescr.Type.EXPRESSION);
@@ -309,6 +368,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public AttributeDescr visitBooleanAttribute(DRLParser.BooleanAttributeContext ctx) {
+        // no-loop false
         AttributeDescr attributeDescr = new AttributeDescr(ctx.name.getText());
         attributeDescr.setValue(ctx.BOOL_LITERAL() != null ? ctx.BOOL_LITERAL().getText() : "true");
         attributeDescr.setType(AttributeDescr.Type.BOOLEAN);
@@ -317,6 +377,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public AttributeDescr visitStringAttribute(DRLParser.StringAttributeContext ctx) {
+        // agenda-group "my_group"
         AttributeDescr attributeDescr = new AttributeDescr(ctx.name.getText());
         attributeDescr.setValue(unescapeJava(safeStripStringDelimiters(ctx.DRL_STRING_LITERAL().getText())));
         attributeDescr.setType(AttributeDescr.Type.STRING);
@@ -325,6 +386,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public AttributeDescr visitStringListAttribute(DRLParser.StringListAttributeContext ctx) {
+        // calendars "cal 1", "cal 2", "cal 3"
         AttributeDescr attributeDescr = new AttributeDescr(ctx.name.getText());
         List<String> valueList = ctx.DRL_STRING_LITERAL().stream()
                 .map(ParseTree::getText)
@@ -362,6 +424,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public AttributeDescr visitDurationAttribute(DRLParser.DurationAttributeContext ctx) {
+        // duration ( 1h30m )
         AttributeDescr attributeDescr = new AttributeDescr(ctx.name.getText());
         if (ctx.DECIMAL_LITERAL() != null) {
             attributeDescr.setValue(ctx.DECIMAL_LITERAL().getText());
@@ -373,6 +436,9 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
         return attributeDescr;
     }
 
+    /**
+     * entry point for LHS
+     */
     @Override
     public List<BaseDescr> visitLhs(DRLParser.LhsContext ctx) {
         if (ctx.lhsExpression() != null) {
@@ -394,10 +460,13 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
     }
 
     private PatternDescr getSinglePatternDescr(DRLParser.LhsPatternBindContext ctx) {
-        Optional<BaseDescr> optPatternDescr = visitFirstDescrChild(ctx);
-        PatternDescr patternDescr = optPatternDescr.filter(PatternDescr.class::isInstance)
-                .map(PatternDescr.class::cast)
-                .orElseThrow(() -> new IllegalStateException("lhsPatternBind must have at least one lhsPattern : " + ctx.getText()));
+        // $p : Person()
+        List<BaseDescr> patternDescrList = visitDescrChildren(ctx);
+        if (patternDescrList.isEmpty() || !(patternDescrList.get(0) instanceof PatternDescr)) {
+            throw new IllegalStateException("lhsPatternBind must have at least one lhsPattern : " + ctx.getText());
+        }
+        PatternDescr patternDescr = (PatternDescr)patternDescrList.get(0);
+
         if (ctx.label() != null) {
             patternDescr.setIdentifier(ctx.label().IDENTIFIER().getText());
         } else if (ctx.unif() != null) {
@@ -408,6 +477,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
     }
 
     private OrDescr getOrDescrWithMultiplePatternDescr(DRLParser.LhsPatternBindContext ctx) {
+        // $p : ( Person(name == "mark") or Person(type == "fan") )
         OrDescr orDescr = new OrDescr();
         List<BaseDescr> descrList = visitDescrChildren(ctx);
         descrList.stream()
@@ -423,6 +493,9 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
         return orDescr;
     }
 
+    /**
+     * entry point for a Pattern
+     */
     @Override
     public PatternDescr visitLhsPattern(DRLParser.LhsPatternContext ctx) {
         PatternDescr patternDescr = new PatternDescr(ctx.objectType.getText());
@@ -449,6 +522,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public ForallDescr visitLhsForall(DRLParser.LhsForallContext ctx) {
+        // forall( Person( age > 30 ) )
         ForallDescr forallDescr = new ForallDescr();
         visitDescrChildren(ctx).forEach(forallDescr::addDescr);
         return forallDescr;
@@ -456,6 +530,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public PatternDescr visitLhsAccumulate(DRLParser.LhsAccumulateContext ctx) {
+        // accumulate( Person( $age : age > 30 ); $aveAge : average( $age ) )
         AccumulateDescr accumulateDescr = new AccumulateDescr();
         accumulateDescr.setInput(visitLhsAndDef(ctx.lhsAndDef()));
 
@@ -473,6 +548,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public BehaviorDescr visitPatternFilter(DRLParser.PatternFilterContext ctx) {
+        // over window:length(10)
         BehaviorDescr behaviorDescr = new BehaviorDescr();
         behaviorDescr.setType(ctx.DRL_WINDOW().getText());
         behaviorDescr.setSubType(ctx.IDENTIFIER().getText());
@@ -484,6 +560,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public FromDescr visitFromExpression(DRLParser.FromExpressionContext ctx) {
+        // from $person.address
         FromDescr fromDescr = new FromDescr();
         fromDescr.setDataSource(new MVELExprDescr(ctx.getText()));
         return fromDescr;
@@ -491,6 +568,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public CollectDescr visitFromCollect(DRLParser.FromCollectContext ctx) {
+        // from collect( Person( age > 21 ) )
         CollectDescr collectDescr = new CollectDescr();
         collectDescr.setInputPattern((PatternDescr) visitLhsPatternBind(ctx.lhsPatternBind()));
         return collectDescr;
@@ -498,6 +576,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public AccumulateDescr visitFromAccumulate(DRLParser.FromAccumulateContext ctx) {
+        // from accumulate ( Cheese( $price : price ), average( $price ) )
         AccumulateDescr accumulateDescr = new AccumulateDescr();
         accumulateDescr.setInput(visitLhsAndDef(ctx.lhsAndDef()));
         if (ctx.DRL_INIT() != null) {
@@ -517,6 +596,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public AccumulateDescr.AccumulateFunctionCallDescr visitAccumulateFunction(DRLParser.AccumulateFunctionContext ctx) {
+        // $a1 : average( $price )
         String function = ctx.IDENTIFIER().getText();
         String bind = ctx.label() == null ? null : ctx.label().IDENTIFIER().getText();
         String[] params = new String[]{getTextPreservingWhitespace(ctx.drlExpression())};
@@ -525,17 +605,26 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public EntryPointDescr visitFromEntryPoint(DRLParser.FromEntryPointContext ctx) {
+        // from entry-point StreamA
         return new EntryPointDescr(safeStripStringDelimiters(ctx.stringId().getText()));
     }
 
+    /**
+     * Collect constraints in a Pattern
+     */
     @Override
     public List<ExprConstraintDescr> visitConstraints(DRLParser.ConstraintsContext ctx) {
+        // Person( age > 30, name == "mark" )
         List<ExprConstraintDescr> exprConstraintDescrList = new ArrayList<>();
         populateExprConstraintDescrList(ctx, exprConstraintDescrList);
         return exprConstraintDescrList;
     }
 
+    /**
+     * Collect constraints in a Pattern. Positional constraints comes first with semicolon.
+     */
     private List<ExprConstraintDescr> visitConstraints(DRLParser.PositionalConstraintsContext positionalCtx, DRLParser.ConstraintsContext ctx) {
+        // Person( "Mark", 42; location == "atlanta" )
         List<ExprConstraintDescr> exprConstraintDescrList = new ArrayList<>();
         populateExprConstraintDescrList(positionalCtx, exprConstraintDescrList);
         populateExprConstraintDescrList(ctx, exprConstraintDescrList);
@@ -557,6 +646,9 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
         }
     }
 
+    /**
+     * Takes one constraint as String and create ExprConstraintDescr
+     */
     @Override
     public ExprConstraintDescr visitConstraint(DRLParser.ConstraintContext ctx) {
         String constraint = visitConstraintChildren(ctx);
@@ -613,11 +705,14 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public EvalDescr visitLhsEval(DRLParser.LhsEvalContext ctx) {
+        // eval(abc("foo"))
         return new EvalDescr(getTextPreservingWhitespace(ctx.conditionalOrExpression()));
     }
 
     @Override
     public BaseDescr visitLhsExpressionEnclosed(DRLParser.LhsExpressionEnclosedContext ctx) {
+        // ( Person(type == "fan") and Cheese(type == "green") )
+        // enclosed expression is simply stripped because Descr itself is encapsulated
         return (BaseDescr) visit(ctx.lhsExpression());
     }
 
@@ -708,7 +803,7 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
 
     @Override
     public BaseDescr visitLhsUnary(DRLParser.LhsUnaryContext ctx) {
-        return visitDescrChildren(ctx).get(0);
+        return visitDescrChildren(ctx).get(0); // lhsUnary has only one child
     }
 
     private void populateStartEnd(BaseDescr descr, ParserRuleContext ctx) {
@@ -718,6 +813,10 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
         descr.setEndCharacter(ctx.getStop().getStopIndex());
     }
 
+    /**
+     * This is a special version of visitChildren().
+     * This collects children BaseDescr objects and returns them as a list.
+     */
     private List<BaseDescr> visitDescrChildren(RuleNode node) {
         List<BaseDescr> aggregator = new ArrayList<>();
         int n = node.getChildCount();
@@ -768,21 +867,10 @@ public class DRLVisitorImpl extends DRLParserBaseVisitor<Object> {
         }
     }
 
-    // leaves of constraint concatenate return Strings
+    /**
+     * Return the text of constraint as-is
+     */
     private String visitConstraintChildren(ParserRuleContext ctx) {
         return getTokenTextPreservingWhitespace(ctx, tokenStream);
-    }
-
-    private Optional<BaseDescr> visitFirstDescrChild(RuleNode node) {
-        int n = node.getChildCount();
-
-        for (int i = 0; i < n && this.shouldVisitNextChild(node, null); ++i) {
-            ParseTree c = node.getChild(i);
-            Object childResult = c.accept(this);
-            if (childResult instanceof BaseDescr) {
-                return Optional.of((BaseDescr) childResult);
-            }
-        }
-        return Optional.empty();
     }
 }
