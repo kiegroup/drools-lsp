@@ -12,8 +12,11 @@ async function main() {
 		// Passed to --extensionTestsPath
 		const extensionTestsPath = path.resolve(__dirname, './suite/index');
 
+		// Use win64 instead of win32 for testing Windows
+		const platform = process.platform === 'win32' ? 'win32-x64-archive' : undefined;
+
 		// Download VS Code, unzip it and run the integration test
-		await runTests({ extensionDevelopmentPath, extensionTestsPath });
+		await runTests({ extensionDevelopmentPath, extensionTestsPath, platform });
 	} catch (err) {
 		console.error('Failed to run tests');
 		process.exit(1);
