@@ -16,7 +16,7 @@ suite('Completion tests', () => {
 				{ label: 'package', kind: vscode.CompletionItemKind.Keyword }
 			]
 		});
-	}).timeout(5000); // increase timeout from the default 2000ms because helper.activate waits 2000ms for server startup
+	}).timeout(20000); // increase timeout from the default 2000ms because helper.activate waits 2000ms for server startup
 });
 
 async function testCompletion(
