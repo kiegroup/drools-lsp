@@ -1,11 +1,5 @@
 package org.drools.lsp.server;
 
-import org.drools.completion.DRLCompletionHelper;
-import org.drools.drl.ast.descr.PackageDescr;
-import org.eclipse.lsp4j.*;
-import org.eclipse.lsp4j.jsonrpc.messages.Either;
-import org.eclipse.lsp4j.services.TextDocumentService;
-
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -13,7 +7,22 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
-import static org.drools.parser.DRLParserHelper.parse;
+import org.drools.completion.DRLCompletionHelper;
+import org.drools.drl.parser.antlr4.DRLParserHelper;
+import org.eclipse.lsp4j.CompletionItem;
+import org.eclipse.lsp4j.CompletionList;
+import org.eclipse.lsp4j.CompletionParams;
+import org.eclipse.lsp4j.Diagnostic;
+import org.eclipse.lsp4j.DidChangeTextDocumentParams;
+import org.eclipse.lsp4j.DidCloseTextDocumentParams;
+import org.eclipse.lsp4j.DidOpenTextDocumentParams;
+import org.eclipse.lsp4j.DidSaveTextDocumentParams;
+import org.eclipse.lsp4j.MessageParams;
+import org.eclipse.lsp4j.MessageType;
+import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.PublishDiagnosticsParams;
+import org.eclipse.lsp4j.jsonrpc.messages.Either;
+import org.eclipse.lsp4j.services.TextDocumentService;
 
 public class DroolsLspDocumentService implements TextDocumentService {
 
@@ -54,8 +63,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     public String getRuleName(CompletionParams completionParams) {
         String text = sourcesMap.get(completionParams.getTextDocument().getUri());
-        PackageDescr packageDescr = parse(text);
-        return packageDescr.getRules().get(0).getName();
+        return DRLParserHelper.getFirstRuleName(text);
     }
 
     @Override

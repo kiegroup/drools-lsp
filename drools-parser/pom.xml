@@ -15,16 +15,6 @@
   <name>Drools :: Parser</name>
 
   <dependencies>
-    <dependency>
-      <groupId>org.drools</groupId>
-      <artifactId>drools-drl-ast</artifactId>
-      <version>${version.drools-drl-ast}</version>
-    </dependency>
-    <dependency>
-      <groupId>org.drools</groupId>
-      <artifactId>drools-util</artifactId>
-      <version>${version.drools-drl-ast}</version>
-    </dependency>
 
     <!-- External dependencies -->
     <dependency>
@@ -84,9 +74,9 @@
               <goal>antlr4</goal>
             </goals>
             <configuration>
-              <visitor>true</visitor>
+              <visitor>false</visitor>
               <listener>false</listener>
-              <libDirectory>src/main/antlr4/org/drools/parser/</libDirectory>
+              <libDirectory>src/main/antlr4/org/drools/drl/parser/antlr4</libDirectory>
             </configuration>
           </execution>
         </executions>

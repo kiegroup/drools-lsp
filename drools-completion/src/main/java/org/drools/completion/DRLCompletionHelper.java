@@ -15,19 +15,19 @@
  */
 package org.drools.completion;
 
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
+
 import com.vmware.antlr4c3.CodeCompletionCore;
-import org.drools.parser.DRLParser;
+import org.drools.drl.parser.antlr4.DRL10Parser;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.services.LanguageClient;
 
-import java.util.List;
-import java.util.Objects;
-import java.util.stream.Collectors;
-
-import static org.drools.parser.DRLParserHelper.computeTokenIndex;
-import static org.drools.parser.DRLParserHelper.createDrlParser;
+import static org.drools.drl.parser.antlr4.DRLParserHelper.computeTokenIndex;
+import static org.drools.drl.parser.antlr4.DRLParserHelper.createDrlParser;
 
 public class DRLCompletionHelper {
 
@@ -35,7 +35,7 @@ public class DRLCompletionHelper {
     }
 
     public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client) {
-        DRLParser drlParser = createDrlParser(text);
+        DRL10Parser drlParser = createDrlParser(text);
 
         int row = caretPosition == null ? -1 : caretPosition.getLine() + 1; // caret line position is zero based
         int col = caretPosition == null ? -1 : caretPosition.getCharacter();
@@ -46,7 +46,7 @@ public class DRLCompletionHelper {
         return getCompletionItems(drlParser, nodeIndex);
     }
 
-    static List<CompletionItem> getCompletionItems(DRLParser drlParser, int nodeIndex) {
+    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex) {
         CodeCompletionCore core = new CodeCompletionCore(drlParser, null, null);
         CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(nodeIndex, null);
 
