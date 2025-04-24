@@ -10,7 +10,7 @@ Server Architecture
 ===
 
 The server part is composed of three modules:
-1. **drools-parser** - responsible for actual drl-syntax parsing, eventually invoking a JAVA-LSP engine to read the `RHS` content (that is plain Java code); it depends on `org.drools:drools-drl-ast`
+1. **drools-parser** - responsible for actual drl-syntax parsing, eventually invoking a JAVA-LSP engine to read the `RHS` content (that is plain Java code); The antlr4 grammar files are taken from the latest drools. 
 2. **drools-completion** - used to provide completion suggestion using the C3 engine; it depends on `com.vmware.antlr4-c3:antlr4-c3` and on `drools-parser`
 3. **drools-lsp-server** - the "gateway" between the client and the parsing/completion logic; by itself it should not implement any business logic, but should be concerned only with communication; it depends directly on `drools-completion`
 
