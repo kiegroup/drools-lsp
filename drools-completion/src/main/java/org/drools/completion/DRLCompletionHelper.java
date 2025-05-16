@@ -15,11 +15,15 @@
  */
 package org.drools.completion;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.vmware.antlr4c3.CodeCompletionCore;
+import org.drools.drl.parser.antlr4.DRL10Lexer;
 import org.drools.drl.parser.antlr4.DRL10Parser;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
@@ -30,6 +34,15 @@ import static org.drools.drl.parser.antlr4.DRLParserHelper.computeTokenIndex;
 import static org.drools.drl.parser.antlr4.DRLParserHelper.createDrlParser;
 
 public class DRLCompletionHelper {
+
+    // PREFERRED_RULES is used to filter out the rules that consist of unwanted tokens
+    // additionally, it can be used to customize getCompletionItems behavior
+    private static final Set<Integer> PREFERRED_RULES = Set.of(
+            DRL10Parser.RULE_drlIdentifier,
+            DRL10Parser.RULE_drlQualifiedName,
+            DRL10Parser.RULE_stringId,
+            DRL10Parser.RULE_consequenceBody
+    );
 
     private DRLCompletionHelper() {
     }
@@ -47,11 +60,15 @@ public class DRLCompletionHelper {
     }
 
     static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex) {
-        CodeCompletionCore core = new CodeCompletionCore(drlParser, null, null);
+        CodeCompletionCore core = new CodeCompletionCore(drlParser, PREFERRED_RULES, Tokens.IGNORED);
         CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(nodeIndex, null);
 
+        if (candidates.rules.containsKey(DRL10Parser.RULE_consequenceBody)) {
+            // in RHS consequence, parser cannot suggest DRL_RHS_END because of island mode approach, so we add it manually
+            candidates.tokens.put(DRL10Lexer.DRL_RHS_END, List.of());
+        }
+
         return candidates.tokens.keySet().stream().filter(Objects::nonNull)
-                .filter(integer -> !Tokens.IGNORED.contains(integer))
                 .map(integer -> drlParser.getVocabulary().getDisplayName(integer).replace("'", ""))
                 .map(String::toLowerCase)
                 .map(k -> createCompletionItem(k, CompletionItemKind.Keyword))
