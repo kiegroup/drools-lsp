@@ -51,5 +51,17 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
-
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+        <configuration>
+          <argLine>
+            -Djava.util.logging.config.file=${project.basedir}/src/test/resources/logging.properties
+          </argLine>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
 </project>
