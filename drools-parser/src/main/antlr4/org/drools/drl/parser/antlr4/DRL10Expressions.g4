@@ -515,13 +515,13 @@ creator
     ;
 
 createdName
-    :	drlIdentifier typeArguments?
-        ( DOT drlIdentifier typeArguments?)*
+    :	drlIdentifier typeArgumentsOrDiamond?
+        ( DOT drlIdentifier typeArgumentsOrDiamond? )*
         |	primitiveType
     ;
 
 innerCreator
-    :	drlIdentifier classCreatorRestExpr
+    :	drlIdentifier nonWildcardTypeArgumentsOrDiamond? classCreatorRestExpr
     ;
 
 arrayCreatorRest
@@ -550,6 +550,16 @@ explicitGenericInvocation
 
 nonWildcardTypeArguments
     :	LT typeList GT
+    ;
+
+typeArgumentsOrDiamond
+    : LT GT
+    | typeArguments
+    ;
+
+nonWildcardTypeArgumentsOrDiamond
+    : LT GT
+    | nonWildcardTypeArguments
     ;
 
 explicitGenericInvocationSuffix
