@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -52,9 +52,7 @@ public class LexerHelper {
                                                                     DroolsSoftKeywords.DIALECT,
                                                                     DroolsSoftKeywords.CALENDARS,
                                                                     DroolsSoftKeywords.TIMER,
-                                                                    DroolsSoftKeywords.DURATION,
-                                                                    DroolsSoftKeywords.REFRACT,
-                                                                    DroolsSoftKeywords.DIRECT);
+                                                                    DroolsSoftKeywords.DURATION);
 
     private final CharStream input;
     private int lookAheadCounter;

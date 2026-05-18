@@ -30,6 +30,7 @@ literal
     :	STRING_LITERAL
     |	DRL_STRING_LITERAL
     |	DECIMAL_LITERAL
+    |   OCT_LITERAL
     |	DRL_BIG_INTEGER_LITERAL
     |	HEX_LITERAL
     |	FLOAT_LITERAL
@@ -199,8 +200,6 @@ drlKeywords
     | DRL_NO_LOOP
     | DRL_AUTO_FOCUS
     | DRL_LOCK_ON_ACTIVE
-    | DRL_REFRACT
-    | DRL_DIRECT
     | DRL_ACTIVATION_GROUP
     | DRL_RULEFLOW_GROUP
     | DRL_DATE_EFFECTIVE
@@ -516,13 +515,13 @@ creator
     ;
 
 createdName
-    :	drlIdentifier typeArguments?
-        ( DOT drlIdentifier typeArguments?)*
+    :	drlIdentifier typeArgumentsOrDiamond?
+        ( DOT drlIdentifier typeArgumentsOrDiamond? )*
         |	primitiveType
     ;
 
 innerCreator
-    :	drlIdentifier classCreatorRestExpr
+    :	drlIdentifier nonWildcardTypeArgumentsOrDiamond? classCreatorRestExpr
     ;
 
 arrayCreatorRest
@@ -551,6 +550,16 @@ explicitGenericInvocation
 
 nonWildcardTypeArguments
     :	LT typeList GT
+    ;
+
+typeArgumentsOrDiamond
+    : LT GT
+    | typeArguments
+    ;
+
+nonWildcardTypeArgumentsOrDiamond
+    : LT GT
+    | nonWildcardTypeArguments
     ;
 
 explicitGenericInvocationSuffix
