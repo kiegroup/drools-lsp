@@ -12,7 +12,7 @@ This extension provides syntax highlighting and code completion for DRL files.
 Under `client` directory, run:
 
 ```bash
-npm install
+npm ci
 npm run pack:dev
 ```
 
