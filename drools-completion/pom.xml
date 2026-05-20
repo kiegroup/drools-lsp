@@ -25,11 +25,17 @@
       <groupId>com.vmware.antlr4-c3</groupId>
       <artifactId>antlr4-c3</artifactId>
       <version>${version.antlr4-c3}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.antlr</groupId>
+          <artifactId>antlr4</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
       <groupId>org.eclipse.lsp4j</groupId>
       <artifactId>org.eclipse.lsp4j</artifactId>
-      <version>0.12.0</version>
+      <version>${version.org.eclipse.lsp4j}</version>
       <scope>compile</scope>
     </dependency>
     <dependency>

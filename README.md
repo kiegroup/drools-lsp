@@ -25,7 +25,7 @@ The server part is composed of three modules:
 **Precompiled-server - no debug**
 1. package server side code with `mvn clean package`
 2. goto `client` directory
-3. issue `npm install`
+3. issue `npm ci`
 4. issue `code .` to start VSCode in that directory
 5. inside VSCode, select `Run and Debug` (Ctrl+Shift+D) and then start `Run Extension`
 6. a new `Extension Development Host` window will appear, with `drl` extension enabled
@@ -35,7 +35,7 @@ The server part is composed of three modules:
 1. package server side code with `mvn clean package`
 2. start server with `DroolsLspTCPLauncher` from IDE on debug mode; this will start the LSP-server listening on port `9925`
 3. goto `client` directory
-4. issue `npm install`
+4. issue `npm ci`
 5. issue `code .` to start VSCode in that directory
 6. inside VSCode, select `Run and Debug` (Ctrl+Shift+D) and then start `Debug Extension`
 7. the extensions will establish a connection to the server running at port `9925`
