@@ -1,5 +1,8 @@
 name: Drools LSP
 
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths-ignore:
@@ -27,27 +30,27 @@ jobs:
     name: ${{ matrix.os }} - Java ${{ matrix.java-version }} - Maven
     steps:
       - name: Clean Disk Space
-        uses: kiegroup/kie-ci/.ci/actions/ubuntu-disk-space@main
+        uses: kiegroup/kie-ci/.ci/actions/ubuntu-disk-space@f571f05d3c9e047d3f12a3fdd0331618d2436896 # main
         if: ${{ matrix.os == 'ubuntu-latest' }}
       - name: Support long paths
         if: ${{ matrix.os == 'windows-latest' }}
-        uses: kiegroup/kie-ci/.ci/actions/long-paths@main
+        uses: kiegroup/kie-ci/.ci/actions/long-paths@f571f05d3c9e047d3f12a3fdd0331618d2436896 # main
       - name: Java and Maven Setup
-        uses: kiegroup/kie-ci/.ci/actions/maven@main
+        uses: kiegroup/kie-ci/.ci/actions/maven@f571f05d3c9e047d3f12a3fdd0331618d2436896 # main
         with:
           java-version: ${{ matrix.java-version }}
           maven-version: ${{ matrix.maven-version }}
           cache-key-prefix: ${{ runner.os }}-${{ matrix.java-version }}-maven${{ matrix.maven-version }}
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Build with Maven
         run: mvn -B clean install
 
       - name: Install Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 16.x
 
-      - run: npm install
+      - run: npm ci
         working-directory: ./client
 
       - name: Extension E2E Test for Linux
