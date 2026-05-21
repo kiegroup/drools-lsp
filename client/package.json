@@ -56,21 +56,25 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js",
-    "pack:dev": "mkdir ./dist; vsce package --githubBranch main -o ./dist/"
+    "pack:dev": "mkdir -p ./dist; vsce package --githubBranch main -o ./dist/"
   },
   "devDependencies": {
     "@types/glob": "7.2.0",
     "@types/mocha": "9.1.1",
     "@types/node": "14.18.63",
-    "@types/vscode": "1.120.0",
+    "@types/vscode": "1.62.0",
     "@typescript-eslint/eslint-plugin": "5.62.0",
     "@typescript-eslint/parser": "5.62.0",
-    "@vscode/test-electron": "1.6.2",
+    "@vscode/test-electron": "2.5.2",
     "@vscode/vsce": "2.32.0",
     "eslint": "8.57.1",
     "glob": "7.2.3",
     "mocha": "11.7.5",
     "typescript": "4.9.5"
+  },
+  "overrides": {
+    "serialize-javascript": "7.0.5",
+    "diff": "8.0.4"
   },
   "dependencies": {
     "vscode-languageclient": "5.1.1"
