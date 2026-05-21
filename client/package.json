@@ -65,12 +65,16 @@
     "@types/vscode": "1.120.0",
     "@typescript-eslint/eslint-plugin": "5.62.0",
     "@typescript-eslint/parser": "5.62.0",
-    "@vscode/test-electron": "1.6.2",
+    "@vscode/test-electron": "2.5.2",
     "@vscode/vsce": "2.32.0",
     "eslint": "8.57.1",
     "glob": "7.2.3",
     "mocha": "11.7.5",
     "typescript": "4.9.5"
+  },
+  "overrides": {
+    "serialize-javascript": "7.0.5",
+    "diff": "8.0.4"
   },
   "dependencies": {
     "vscode-languageclient": "5.1.1"
