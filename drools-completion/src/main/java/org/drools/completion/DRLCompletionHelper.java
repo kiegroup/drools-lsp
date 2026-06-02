@@ -57,17 +57,17 @@ public class DRLCompletionHelper {
         int row = caretPosition == null ? -1 : caretPosition.getLine() + 1; // caret line position is zero based
         int col = caretPosition == null ? -1 : caretPosition.getCharacter();
 
-        drlParser.compilationUnit();
+        DRL10Parser.CompilationUnitContext compilationUnit = drlParser.compilationUnit();
         Integer nodeIndex = computeTokenIndex(drlParser, row, col);
 
-        return getCompletionItems(drlParser, nodeIndex, text, classIndex);
+        return getCompletionItems(drlParser, nodeIndex, compilationUnit, classIndex);
     }
 
     static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex) {
         return getCompletionItems(drlParser, nodeIndex, null, ClassIndex.empty());
     }
 
-    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, String text, ClassIndex classIndex) {
+    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex) {
         CodeCompletionCore core = new CodeCompletionCore(drlParser, PREFERRED_RULES, Tokens.IGNORED);
         CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(nodeIndex, null);
 
@@ -82,8 +82,8 @@ public class DRLCompletionHelper {
                 .map(k -> createCompletionItem(k, CompletionItemKind.Keyword))
                 .collect(Collectors.toList());
 
-        if (text != null && classIndex.size() > 0 && isPatternPosition(candidates)) {
-            items.addAll(getClassCompletionItems(text, classIndex));
+        if (compilationUnit != null && classIndex.size() > 0 && isPatternPosition(candidates)) {
+            items.addAll(getClassCompletionItems(compilationUnit, classIndex));
         }
 
         return items;
@@ -98,8 +98,8 @@ public class DRLCompletionHelper {
             || path.contains(DRL10Parser.RULE_lhsPatternBind);
     }
 
-    private static List<CompletionItem> getClassCompletionItems(String text, ClassIndex classIndex) {
-        Set<String> importedFqcns = parseImports(text);
+    private static List<CompletionItem> getClassCompletionItems(DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex) {
+        Set<String> importedFqcns = extractImports(compilationUnit);
         List<String> matchingFqcns = classIndex.getMatching("");
         List<CompletionItem> items = new ArrayList<>();
 
@@ -123,18 +123,12 @@ public class DRLCompletionHelper {
         return items;
     }
 
-    private static Set<String> parseImports(String text) {
+    private static Set<String> extractImports(DRL10Parser.CompilationUnitContext compilationUnit) {
         Set<String> imports = new HashSet<>();
-        for (String line : text.split("\n")) {
-            String trimmed = line.trim();
-            if (trimmed.startsWith("import ")) {
-                String importStr = trimmed.substring("import ".length()).trim();
-                if (importStr.endsWith(";")) {
-                    importStr = importStr.substring(0, importStr.length() - 1).trim();
-                }
-                if (!importStr.startsWith("static ") && !importStr.startsWith("function ")
-                    && !importStr.startsWith("accumulate ") && !importStr.startsWith("acc ")) {
-                    imports.add(importStr);
+        for (DRL10Parser.DrlStatementdefContext stmt : compilationUnit.drlStatementdef()) {
+            if (stmt.importdef() instanceof DRL10Parser.ImportStandardDefContext importDef) {
+                if (importDef.DRL_FUNCTION() == null && importDef.STATIC() == null) {
+                    imports.add(importDef.drlQualifiedName().getText());
                 }
             }
         }
