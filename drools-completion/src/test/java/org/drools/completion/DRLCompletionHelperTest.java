@@ -1,10 +1,16 @@
 package org.drools.completion;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 import org.eclipse.lsp4j.CompletionItem;
+import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.MessageActionItem;
 import org.eclipse.lsp4j.MessageParams;
@@ -119,6 +125,95 @@ class DRLCompletionHelperTest {
         caretPosition.setCharacter(0);
         result = DRLCompletionHelper.getCompletionItems(text, caretPosition, getLanguageClient());
         assertThat(completionItemStrings(result)).contains("import", "global", "rule"); // top level statements
+    }
+
+    @Test
+    void classCompletionInPatternPosition() throws IOException {
+        Path tempDir = Files.createTempDirectory("drools-test-classes");
+        try {
+            Files.createDirectories(tempDir.resolve("org/example"));
+            Files.createFile(tempDir.resolve("org/example/Person.class"));
+            Files.createFile(tempDir.resolve("org/example/Pet.class"));
+            Files.createFile(tempDir.resolve("org/example/Address.class"));
+
+            ClassIndex classIndex = ClassIndex.build(Set.of(tempDir));
+
+            String text = """
+                    package org.example;
+
+                    import org.example.Person;
+
+                    rule MyRule
+                      when
+                        $p : \s
+                      then
+                    end
+                    """;
+
+            Position caretPosition = new Position(6, 8);
+            List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(text, caretPosition, getLanguageClient(), classIndex);
+
+            List<String> labels = result.stream().map(CompletionItem::getLabel).toList();
+            assertThat(labels).contains("Person", "Pet", "Address");
+
+            List<CompletionItem> classItems = result.stream()
+                .filter(item -> item.getKind() == CompletionItemKind.Class)
+                .toList();
+            assertThat(classItems).isNotEmpty();
+
+            CompletionItem personItem = classItems.stream()
+                .filter(item -> item.getLabel().equals("Person")).findFirst().orElseThrow();
+            CompletionItem addressItem = classItems.stream()
+                .filter(item -> item.getLabel().equals("Address")).findFirst().orElseThrow();
+
+            // Person is imported, so should sort before Address
+            assertThat(personItem.getSortText().compareTo(addressItem.getSortText())).isLessThan(0);
+        } finally {
+            try (var walk = Files.walk(tempDir)) {
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                    try { Files.delete(p); } catch (IOException ignored) {}
+                });
+            }
+        }
+    }
+
+    @Test
+    void classCompletionWithTypedPrefix() throws IOException {
+        Path tempDir = Files.createTempDirectory("drools-test-classes");
+        try {
+            Files.createDirectories(tempDir.resolve("org/example"));
+            Files.createFile(tempDir.resolve("org/example/Person.class"));
+            Files.createFile(tempDir.resolve("org/example/Pet.class"));
+            Files.createFile(tempDir.resolve("org/example/Address.class"));
+
+            ClassIndex classIndex = ClassIndex.build(Set.of(tempDir));
+
+            String text = """
+                    package org.example;
+
+                    rule MyRule
+                      when
+                        $p : Per
+                      then
+                    end
+                    """;
+
+            Position caretPosition = new Position(4, 12);
+            List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(text, caretPosition, getLanguageClient(), classIndex);
+
+            List<String> classLabels = result.stream()
+                .filter(item -> item.getKind() == CompletionItemKind.Class)
+                .map(CompletionItem::getLabel)
+                .toList();
+
+            assertThat(classLabels).contains("Person", "Pet", "Address");
+        } finally {
+            try (var walk = Files.walk(tempDir)) {
+                walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+                    try { Files.delete(p); } catch (IOException ignored) {}
+                });
+            }
+        }
     }
 
     private List<String> completionItemStrings(List<CompletionItem> result) {

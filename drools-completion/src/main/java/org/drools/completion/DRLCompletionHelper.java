@@ -90,11 +90,55 @@ public class DRLCompletionHelper {
     }
 
     private static boolean isPatternPosition(CodeCompletionCore.CandidatesCollection candidates) {
-        return false; // stub — implemented in Task 4
+        List<Integer> path = candidates.rules.get(DRL10Parser.RULE_drlQualifiedName);
+        if (path == null) {
+            return false;
+        }
+        return path.contains(DRL10Parser.RULE_lhsPattern)
+            || path.contains(DRL10Parser.RULE_lhsPatternBind);
     }
 
     private static List<CompletionItem> getClassCompletionItems(String text, ClassIndex classIndex) {
-        return List.of(); // stub — implemented in Task 4
+        Set<String> importedFqcns = parseImports(text);
+        List<String> matchingFqcns = classIndex.getMatching("");
+        List<CompletionItem> items = new ArrayList<>();
+
+        for (String fqcn : matchingFqcns) {
+            String simpleName = fqcn.substring(fqcn.lastIndexOf('.') + 1);
+            CompletionItem item = new CompletionItem();
+            item.setLabel(simpleName);
+            item.setDetail(fqcn);
+            item.setKind(CompletionItemKind.Class);
+            item.setInsertText(simpleName);
+
+            if (importedFqcns.contains(fqcn)) {
+                item.setSortText("0_" + simpleName);
+            } else {
+                item.setSortText("1_" + simpleName);
+            }
+
+            items.add(item);
+        }
+
+        return items;
+    }
+
+    private static Set<String> parseImports(String text) {
+        Set<String> imports = new HashSet<>();
+        for (String line : text.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.startsWith("import ")) {
+                String importStr = trimmed.substring("import ".length()).trim();
+                if (importStr.endsWith(";")) {
+                    importStr = importStr.substring(0, importStr.length() - 1).trim();
+                }
+                if (!importStr.startsWith("static ") && !importStr.startsWith("function ")
+                    && !importStr.startsWith("accumulate ") && !importStr.startsWith("acc ")) {
+                    imports.add(importStr);
+                }
+            }
+        }
+        return imports;
     }
 
     static CompletionItem createCompletionItem(String label, CompletionItemKind itemKind) {
