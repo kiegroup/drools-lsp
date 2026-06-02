@@ -48,6 +48,10 @@ public class DRLCompletionHelper {
     }
 
     public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client) {
+        return getCompletionItems(text, caretPosition, client, ClassIndex.empty());
+    }
+
+    public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client, ClassIndex classIndex) {
         DRL10Parser drlParser = createDrlParser(text);
 
         int row = caretPosition == null ? -1 : caretPosition.getLine() + 1; // caret line position is zero based
@@ -56,10 +60,14 @@ public class DRLCompletionHelper {
         drlParser.compilationUnit();
         Integer nodeIndex = computeTokenIndex(drlParser, row, col);
 
-        return getCompletionItems(drlParser, nodeIndex);
+        return getCompletionItems(drlParser, nodeIndex, text, classIndex);
     }
 
     static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex) {
+        return getCompletionItems(drlParser, nodeIndex, null, ClassIndex.empty());
+    }
+
+    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, String text, ClassIndex classIndex) {
         CodeCompletionCore core = new CodeCompletionCore(drlParser, PREFERRED_RULES, Tokens.IGNORED);
         CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(nodeIndex, null);
 
@@ -68,11 +76,25 @@ public class DRLCompletionHelper {
             candidates.tokens.put(DRL10Lexer.DRL_RHS_END, List.of());
         }
 
-        return candidates.tokens.keySet().stream().filter(Objects::nonNull)
+        List<CompletionItem> items = candidates.tokens.keySet().stream().filter(Objects::nonNull)
                 .map(integer -> drlParser.getVocabulary().getDisplayName(integer).replace("'", ""))
                 .map(String::toLowerCase)
                 .map(k -> createCompletionItem(k, CompletionItemKind.Keyword))
                 .collect(Collectors.toList());
+
+        if (text != null && classIndex.size() > 0 && isPatternPosition(candidates)) {
+            items.addAll(getClassCompletionItems(text, classIndex));
+        }
+
+        return items;
+    }
+
+    private static boolean isPatternPosition(CodeCompletionCore.CandidatesCollection candidates) {
+        return false; // stub — implemented in Task 4
+    }
+
+    private static List<CompletionItem> getClassCompletionItems(String text, ClassIndex classIndex) {
+        return List.of(); // stub — implemented in Task 4
     }
 
     static CompletionItem createCompletionItem(String label, CompletionItemKind itemKind) {

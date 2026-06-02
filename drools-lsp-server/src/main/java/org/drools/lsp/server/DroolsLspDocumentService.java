@@ -7,6 +7,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
+import org.drools.completion.ClassIndex;
 import org.drools.completion.DRLCompletionHelper;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.CompletionItem;
@@ -27,11 +28,16 @@ import org.eclipse.lsp4j.services.TextDocumentService;
 public class DroolsLspDocumentService implements TextDocumentService {
 
     private final Map<String, String> sourcesMap = new ConcurrentHashMap<>();
+    private volatile ClassIndex classIndex = ClassIndex.empty();
 
     private final DroolsLspServer server;
 
     public DroolsLspDocumentService(DroolsLspServer server) {
         this.server = server;
+    }
+
+    public void setClassIndex(ClassIndex classIndex) {
+        this.classIndex = classIndex;
     }
 
     @Override
@@ -84,7 +90,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
         String text = sourcesMap.get(completionParams.getTextDocument().getUri());
 
         Position caretPosition = completionParams.getPosition();
-        List<CompletionItem> completionItems = DRLCompletionHelper.getCompletionItems(text, caretPosition, server.getClient());
+        List<CompletionItem> completionItems = DRLCompletionHelper.getCompletionItems(text, caretPosition, server.getClient(), classIndex);
 
         server.getClient().showMessage(new MessageParams(MessageType.Info, "Position=" + caretPosition));
         server.getClient().showMessage(new MessageParams(MessageType.Info, "completionItems = " + completionItems));

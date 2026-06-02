@@ -1,7 +1,12 @@
 package org.drools.lsp.server;
 
+import java.net.URI;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
+import org.drools.completion.ClassIndex;
 import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
@@ -36,14 +41,23 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
 
     @Override
     public CompletableFuture<InitializeResult> initialize(InitializeParams params) {
-        // Initialize the InitializeResult for this LS.
         final InitializeResult initializeResult = new InitializeResult(new ServerCapabilities());
 
-        // Set the capabilities of the LS to inform the client.
         initializeResult.getCapabilities().setTextDocumentSync(TextDocumentSyncKind.Full);
         CompletionOptions completionOptions = new CompletionOptions();
         initializeResult.getCapabilities().setCompletionProvider(completionOptions);
-        return CompletableFuture.supplyAsync( () -> initializeResult );
+
+        String rootUri = params.getRootUri();
+        if (rootUri != null) {
+            CompletableFuture.runAsync(() -> {
+                Path rootPath = Paths.get(URI.create(rootUri));
+                Set<Path> classpathEntries = MavenClasspathResolver.resolve(rootPath);
+                ClassIndex classIndex = ClassIndex.build(classpathEntries);
+                textService.setClassIndex(classIndex);
+            });
+        }
+
+        return CompletableFuture.supplyAsync(() -> initializeResult);
     }
 
     @Override
