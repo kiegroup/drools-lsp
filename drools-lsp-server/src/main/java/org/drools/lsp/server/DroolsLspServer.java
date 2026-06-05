@@ -23,6 +23,7 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
     private final WorkspaceService workspaceService;
 
     private LanguageClient client;
+    private volatile Set<Path> classpathEntries = Set.of();
 
     public DroolsLspServer() {
         textService = new DroolsLspDocumentService(this);
@@ -39,6 +40,10 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         return client;
     }
 
+    public Set<Path> getClasspathEntries() {
+        return classpathEntries;
+    }
+
     @Override
     public CompletableFuture<InitializeResult> initialize(InitializeParams params) {
         final InitializeResult initializeResult = new InitializeResult(new ServerCapabilities());
@@ -51,8 +56,9 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         if (rootUri != null) {
             CompletableFuture.runAsync(() -> {
                 Path rootPath = Paths.get(URI.create(rootUri));
-                Set<Path> classpathEntries = MavenClasspathResolver.resolve(rootPath);
-                ClassIndex classIndex = ClassIndex.build(classpathEntries);
+                Set<Path> resolved = MavenClasspathResolver.resolve(rootPath);
+                classpathEntries = resolved;
+                ClassIndex classIndex = ClassIndex.build(resolved);
                 textService.setClassIndex(classIndex);
             });
         }
