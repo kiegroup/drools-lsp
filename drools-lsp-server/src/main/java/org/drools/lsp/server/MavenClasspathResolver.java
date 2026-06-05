@@ -69,7 +69,24 @@ public class MavenClasspathResolver {
     private static Set<Path> resolveModule(Path moduleDir) throws IOException, InterruptedException {
         Set<Path> entries = new LinkedHashSet<>();
 
-        Path cpFile = Files.createTempFile("drools-lsp-cp-", ".txt");
+        resolveDependencyClasspath(moduleDir, entries);
+
+        Path targetClasses = moduleDir.resolve("target/classes");
+        if (Files.isDirectory(targetClasses)) {
+            entries.add(targetClasses);
+        }
+
+        return entries;
+    }
+
+    private static void resolveDependencyClasspath(Path moduleDir, Set<Path> entries) {
+        Path cpFile;
+        try {
+            cpFile = Files.createTempFile("drools-lsp-cp-", ".txt");
+        } catch (IOException e) {
+            logger.log(Level.WARNING, "Failed to create temp file for classpath resolution", e);
+            return;
+        }
         try {
             String mvnCommand = System.getProperty("os.name").toLowerCase().contains("win") ? "mvn.cmd" : "mvn";
             ProcessBuilder pb = new ProcessBuilder(
@@ -90,11 +107,11 @@ public class MavenClasspathResolver {
             if (!finished) {
                 process.destroyForcibly();
                 logger.warning("mvn dependency:build-classpath timed out for " + moduleDir);
-                return entries;
+                return;
             }
             if (process.exitValue() != 0) {
                 logger.warning("mvn dependency:build-classpath failed for " + moduleDir + " with exit code " + process.exitValue());
-                return entries;
+                return;
             }
 
             String cpContent = Files.readString(cpFile).trim();
@@ -105,15 +122,10 @@ public class MavenClasspathResolver {
                     .map(Path::of)
                     .forEach(entries::add);
             }
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Failed to resolve dependency classpath for " + moduleDir + ": " + e.getMessage());
         } finally {
-            Files.deleteIfExists(cpFile);
+            try { Files.deleteIfExists(cpFile); } catch (IOException ignored) {}
         }
-
-        Path targetClasses = moduleDir.resolve("target/classes");
-        if (Files.isDirectory(targetClasses)) {
-            entries.add(targetClasses);
-        }
-
-        return entries;
     }
 }
