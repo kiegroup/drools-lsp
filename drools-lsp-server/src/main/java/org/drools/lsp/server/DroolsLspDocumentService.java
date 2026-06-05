@@ -40,6 +40,10 @@ public class DroolsLspDocumentService implements TextDocumentService {
         this.classIndex = classIndex;
     }
 
+    ClassIndex getClassIndexForTest() {
+        return classIndex;
+    }
+
     @Override
     public void didOpen(DidOpenTextDocumentParams params) {
         sourcesMap.put(params.getTextDocument().getUri(), params.getTextDocument().getText());
