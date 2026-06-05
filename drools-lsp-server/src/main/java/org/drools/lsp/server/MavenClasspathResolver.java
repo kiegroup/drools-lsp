@@ -69,8 +69,9 @@ public class MavenClasspathResolver {
 
         Path cpFile = Files.createTempFile("drools-lsp-cp-", ".txt");
         try {
+            String mvnCommand = System.getProperty("os.name").toLowerCase().contains("win") ? "mvn.cmd" : "mvn";
             ProcessBuilder pb = new ProcessBuilder(
-                "mvn", "-f", moduleDir.resolve("pom.xml").toString(),
+                mvnCommand, "-f", moduleDir.resolve("pom.xml").toString(),
                 "dependency:build-classpath",
                 "-Dmdep.outputFile=" + cpFile.toAbsolutePath()
             );
