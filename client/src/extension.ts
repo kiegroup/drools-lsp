@@ -71,8 +71,10 @@ export function activate(context: vscode.ExtensionContext) {
         console.log('serverOptions ' + serverOptions);
         // Options to control the language client
         let clientOptions: LanguageClientOptions = {
-            // Register the server for plain text documents
-            documentSelector: [{scheme: 'file', language: 'drools'}]
+            documentSelector: [{scheme: 'file', language: 'drools'}],
+            synchronize: {
+                fileEvents: vscode.workspace.createFileSystemWatcher('**/target/classes/**/*.class')
+            }
         };
         // Create the language client and start the client.
         let languageClient: LanguageClient = new LanguageClient('Drools', 'DRL Language Server', serverOptions, clientOptions);
