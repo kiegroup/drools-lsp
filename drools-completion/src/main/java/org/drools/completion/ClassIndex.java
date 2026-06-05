@@ -40,6 +40,10 @@ public class ClassIndex {
         return new ClassIndex(index);
     }
 
+    public List<String> getAll() {
+        return getMatching("");
+    }
+
     public List<String> getMatching(String prefix) {
         List<String> result = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : index.entrySet()) {

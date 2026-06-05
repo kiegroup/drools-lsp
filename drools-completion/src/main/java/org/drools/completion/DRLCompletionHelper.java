@@ -100,7 +100,8 @@ public class DRLCompletionHelper {
 
     private static List<CompletionItem> getClassCompletionItems(DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex) {
         Set<String> importedFqcns = extractImports(compilationUnit);
-        List<String> matchingFqcns = classIndex.getMatching("");
+        // LSP clients filter completions by typed prefix, so we return all classes
+        List<String> matchingFqcns = classIndex.getAll();
         List<CompletionItem> items = new ArrayList<>();
 
         for (String fqcn : matchingFqcns) {
