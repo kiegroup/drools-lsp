@@ -28,19 +28,34 @@ suite('Class completion tests', () => {
 		// Line 13: "$p :" in the "greeting" rule — caret after the colon
 		const position = new vscode.Position(13, 7);
 
+		// Class index is built asynchronously after initialize; retry until ready
+		let classLabels: string[] = [];
+		for (let attempt = 0; attempt < 15; attempt++) {
+			const completionList = (await vscode.commands.executeCommand(
+				'vscode.executeCompletionItemProvider',
+				docUri,
+				position
+			)) as vscode.CompletionList;
+
+			classLabels = completionList.items
+				.filter(item => item.kind === vscode.CompletionItemKind.Class)
+				.map(item => item.label as string);
+
+			if (classLabels.includes('Person')) {
+				break;
+			}
+			await new Promise(resolve => setTimeout(resolve, 1000));
+		}
+
+		assert.ok(classLabels.includes('Person'), 'Should suggest Person class');
+		assert.ok(classLabels.includes('Address'), 'Should suggest Address class');
+
+		// Re-query to check sortText on the final result
 		const actualCompletionList = (await vscode.commands.executeCommand(
 			'vscode.executeCompletionItemProvider',
 			docUri,
 			position
 		)) as vscode.CompletionList;
-
-		// Person and Address are compiled domain classes in testFixture/target/classes
-		const classLabels = actualCompletionList.items
-			.filter(item => item.kind === vscode.CompletionItemKind.Class)
-			.map(item => item.label);
-
-		assert.ok(classLabels.includes('Person'), 'Should suggest Person class');
-		assert.ok(classLabels.includes('Address'), 'Should suggest Address class');
 
 		// Person is imported, so should have sortText starting with "0_"
 		const personItem = actualCompletionList.items.find(

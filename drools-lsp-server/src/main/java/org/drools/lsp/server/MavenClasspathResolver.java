@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -85,9 +86,14 @@ public class MavenClasspathResolver {
                 }
             }
 
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
-                logger.warning("mvn dependency:build-classpath failed for " + moduleDir + " with exit code " + exitCode);
+            boolean finished = process.waitFor(60, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                logger.warning("mvn dependency:build-classpath timed out for " + moduleDir);
+                return entries;
+            }
+            if (process.exitValue() != 0) {
+                logger.warning("mvn dependency:build-classpath failed for " + moduleDir + " with exit code " + process.exitValue());
                 return entries;
             }
 
