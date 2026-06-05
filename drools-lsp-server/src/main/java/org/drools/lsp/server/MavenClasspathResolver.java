@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -92,8 +93,7 @@ public class MavenClasspathResolver {
 
             String cpContent = Files.readString(cpFile).trim();
             if (!cpContent.isEmpty()) {
-                String separator = System.getProperty("os.name").toLowerCase().contains("win") ? ";" : ":";
-                Arrays.stream(cpContent.split(separator))
+                Arrays.stream(cpContent.split(File.pathSeparator))
                     .map(String::trim)
                     .filter(s -> !s.isEmpty())
                     .map(Path::of)

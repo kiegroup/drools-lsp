@@ -76,11 +76,15 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         String rootUri = params.getRootUri();
         if (rootUri != null) {
             CompletableFuture.runAsync(() -> {
-                Path rootPath = Paths.get(URI.create(rootUri));
-                Set<Path> resolved = MavenClasspathResolver.resolve(rootPath);
-                classpathEntries = resolved;
-                ClassIndex classIndex = ClassIndex.build(resolved);
-                textService.setClassIndex(classIndex);
+                try {
+                    Path rootPath = Paths.get(URI.create(rootUri));
+                    Set<Path> resolved = MavenClasspathResolver.resolve(rootPath);
+                    classpathEntries = resolved;
+                    ClassIndex classIndex = ClassIndex.build(resolved);
+                    textService.setClassIndex(classIndex);
+                } catch (Exception e) {
+                    logger.log(Level.WARNING, "Failed to build class index at startup", e);
+                }
             });
         }
 

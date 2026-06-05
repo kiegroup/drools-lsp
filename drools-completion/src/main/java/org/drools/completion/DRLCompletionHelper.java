@@ -112,9 +112,9 @@ public class DRLCompletionHelper {
             item.setInsertText(simpleName);
 
             if (importedFqcns.contains(fqcn)) {
-                item.setSortText("0_" + simpleName);
+                item.setSortText("0_" + simpleName + "_" + fqcn);
             } else {
-                item.setSortText("1_" + simpleName);
+                item.setSortText("1_" + simpleName + "_" + fqcn);
             }
 
             items.add(item);
