@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.util.Set;
 
 import org.drools.completion.ClassIndex;
+import org.eclipse.lsp4j.DidChangeWatchedFilesParams;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -29,6 +30,20 @@ class DroolsLspServerTest {
 
         ClassIndex index = server.getTextDocumentService().getClassIndexForTest();
         assertThat(index.getMatching("Foo")).contains("com.example.Foo");
+    }
+
+    @Test
+    void didChangeWatchedFilesTriggersRebuild() {
+        DroolsLspServer server = TestHelperMethods.getDroolsLspServerForDocument("");
+
+        Path tempDir = createTempClassDir("com/example/Bar.class");
+        server.setClasspathEntriesForTest(Set.of(tempDir));
+
+        DroolsLspWorkspaceService workspaceService = (DroolsLspWorkspaceService) server.getWorkspaceService();
+        workspaceService.didChangeWatchedFiles(new DidChangeWatchedFilesParams());
+
+        ClassIndex index = server.getTextDocumentService().getClassIndexForTest();
+        assertThat(index.getMatching("Bar")).contains("com.example.Bar");
     }
 
     private Path createTempClassDir(String classFilePath) {

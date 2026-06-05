@@ -31,7 +31,7 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
 
     public DroolsLspServer() {
         textService = new DroolsLspDocumentService(this);
-        workspaceService = new DroolsLspWorkspaceService();
+        workspaceService = new DroolsLspWorkspaceService(this);
     }
 
 
