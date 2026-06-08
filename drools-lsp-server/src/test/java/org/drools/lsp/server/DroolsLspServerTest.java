@@ -37,7 +37,7 @@ class DroolsLspServerTest {
     }
 
     @Test
-    void didChangeWatchedFilesTriggersRebuild() throws IOException {
+    void didChangeWatchedFilesTriggersRebuild() throws Exception {
         DroolsLspServer server = TestHelperMethods.getDroolsLspServerForDocument("");
 
         Path classDir = createClassDir("com/example/Bar.class");
@@ -46,8 +46,33 @@ class DroolsLspServerTest {
         DroolsLspWorkspaceService workspaceService = (DroolsLspWorkspaceService) server.getWorkspaceService();
         workspaceService.didChangeWatchedFiles(new DidChangeWatchedFilesParams());
 
+        Thread.sleep(DroolsLspWorkspaceService.DEBOUNCE_DELAY_MS + 500);
+
         ClassIndex index = server.getTextDocumentService().getClassIndexForTest();
         assertThat(index.getMatching("Bar")).contains("com.example.Bar");
+    }
+
+    @Test
+    void rapidFileChangesCoalesceIntoOneRebuild() throws Exception {
+        DroolsLspServer server = TestHelperMethods.getDroolsLspServerForDocument("");
+
+        Path classDir = createClassDir("com/example/Baz.class");
+        server.setClasspathEntriesForTest(Set.of(classDir));
+
+        DroolsLspWorkspaceService workspaceService = (DroolsLspWorkspaceService) server.getWorkspaceService();
+        for (int i = 0; i < 100; i++) {
+            workspaceService.didChangeWatchedFiles(new DidChangeWatchedFilesParams());
+        }
+
+        // Index should not be rebuilt yet (still within debounce window)
+        ClassIndex indexBefore = server.getTextDocumentService().getClassIndexForTest();
+        assertThat(indexBefore.getMatching("Baz")).isEmpty();
+
+        Thread.sleep(DroolsLspWorkspaceService.DEBOUNCE_DELAY_MS + 500);
+
+        ClassIndex indexAfter = server.getTextDocumentService().getClassIndexForTest();
+        assertThat(indexAfter).isNotNull();
+        assertThat(indexAfter.getMatching("Baz")).contains("com.example.Baz");
     }
 
     private Path createClassDir(String classFilePath) throws IOException {
