@@ -66,15 +66,17 @@ public class MavenClasspathResolver {
         return result;
     }
 
-    private static Set<Path> resolveModule(Path moduleDir) throws IOException, InterruptedException {
+    private static Set<Path> resolveModule(Path moduleDir) {
         Set<Path> entries = new LinkedHashSet<>();
 
-        resolveDependencyClasspath(moduleDir, entries);
+        // The module's own compiled output -- located via filesystem conventions,
+        // so this works even when mvn is unavailable and copes with non-standard
+        // build layouts.
+        entries.addAll(BuildOutputLocator.findClassDirs(moduleDir));
 
-        Path targetClasses = moduleDir.resolve("target/classes");
-        if (Files.isDirectory(targetClasses)) {
-            entries.add(targetClasses);
-        }
+        // Dependency JARs -- best-effort via mvn; skipped gracefully when mvn is
+        // absent, offline, or otherwise fails.
+        resolveDependencyClasspath(moduleDir, entries);
 
         return entries;
     }
