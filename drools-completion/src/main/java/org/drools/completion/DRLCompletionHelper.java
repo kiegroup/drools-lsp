@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.vmware.antlr4c3.CodeCompletionCore;
+import org.antlr.v4.runtime.Token;
 import org.drools.drl.parser.antlr4.DRL10Lexer;
 import org.drools.drl.parser.antlr4.DRL10Parser;
 import org.eclipse.lsp4j.CompletionItem;
@@ -59,15 +60,16 @@ public class DRLCompletionHelper {
 
         DRL10Parser.CompilationUnitContext compilationUnit = drlParser.compilationUnit();
         Integer nodeIndex = computeTokenIndex(drlParser, row, col);
+        String prefix = extractPrefix(drlParser, nodeIndex);
 
-        return getCompletionItems(drlParser, nodeIndex, compilationUnit, classIndex);
+        return getCompletionItems(drlParser, nodeIndex, compilationUnit, classIndex, prefix);
     }
 
     static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex) {
-        return getCompletionItems(drlParser, nodeIndex, null, ClassIndex.empty());
+        return getCompletionItems(drlParser, nodeIndex, null, ClassIndex.empty(), "");
     }
 
-    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex) {
+    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix) {
         CodeCompletionCore core = new CodeCompletionCore(drlParser, PREFERRED_RULES, Tokens.IGNORED);
         CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(nodeIndex, null);
 
@@ -83,7 +85,7 @@ public class DRLCompletionHelper {
                 .collect(Collectors.toList());
 
         if (compilationUnit != null && classIndex.size() > 0 && isPatternPosition(candidates)) {
-            items.addAll(getClassCompletionItems(compilationUnit, classIndex));
+            items.addAll(getClassCompletionItems(compilationUnit, classIndex, prefix));
         }
 
         return items;
@@ -98,10 +100,9 @@ public class DRLCompletionHelper {
             || path.contains(DRL10Parser.RULE_lhsPatternBind);
     }
 
-    private static List<CompletionItem> getClassCompletionItems(DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex) {
+    private static List<CompletionItem> getClassCompletionItems(DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix) {
         Set<String> importedFqcns = extractImports(compilationUnit);
-        // LSP clients filter completions by typed prefix, so we return all classes
-        List<String> matchingFqcns = classIndex.getAll();
+        List<String> matchingFqcns = classIndex.getMatching(prefix);
         List<CompletionItem> items = new ArrayList<>();
 
         for (String fqcn : matchingFqcns) {
@@ -134,6 +135,18 @@ public class DRLCompletionHelper {
             }
         }
         return imports;
+    }
+
+    private static String extractPrefix(DRL10Parser drlParser, Integer nodeIndex) {
+        if (nodeIndex == null || nodeIndex < 0 || nodeIndex >= drlParser.getInputStream().size()) {
+            return "";
+        }
+        Token token = drlParser.getInputStream().get(nodeIndex);
+        String text = token.getText();
+        if (text != null && !text.isEmpty() && Character.isJavaIdentifierStart(text.charAt(0))) {
+            return text;
+        }
+        return "";
     }
 
     static CompletionItem createCompletionItem(String label, CompletionItemKind itemKind) {

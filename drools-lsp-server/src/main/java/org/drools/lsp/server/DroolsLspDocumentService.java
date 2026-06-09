@@ -11,6 +11,7 @@ import org.drools.completion.ClassIndex;
 import org.drools.completion.DRLCompletionHelper;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.CompletionItem;
+import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.Diagnostic;
@@ -78,7 +79,14 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     @Override
     public CompletableFuture<Either<List<CompletionItem>, CompletionList>> completion(CompletionParams completionParams) {
-        return CompletableFuture.supplyAsync(() -> Either.forLeft(attempt(() -> getCompletionItems(completionParams))));
+        return CompletableFuture.supplyAsync(() -> {
+            List<CompletionItem> items = attempt(() -> getCompletionItems(completionParams));
+            if (items == null) {
+                items = List.of();
+            }
+            boolean isIncomplete = items.stream().anyMatch(item -> item.getKind() == CompletionItemKind.Class);
+            return Either.forRight(new CompletionList(isIncomplete, items));
+        });
     }
 
     private <T> T attempt(Supplier<T> supplier) {

@@ -206,7 +206,8 @@ class DRLCompletionHelperTest {
                 .map(CompletionItem::getLabel)
                 .toList();
 
-            assertThat(classLabels).contains("Person", "Pet", "Address");
+            assertThat(classLabels).containsExactly("Person");
+            assertThat(classLabels).doesNotContain("Pet", "Address");
         } finally {
             try (var walk = Files.walk(tempDir)) {
                 walk.sorted(Comparator.reverseOrder()).forEach(p -> {
