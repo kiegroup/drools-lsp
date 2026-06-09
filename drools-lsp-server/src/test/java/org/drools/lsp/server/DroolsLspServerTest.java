@@ -75,6 +75,37 @@ class DroolsLspServerTest {
         assertThat(indexAfter.getMatching("Baz")).contains("com.example.Baz");
     }
 
+    // Verifies the cached JAR index is used on rebuild, not that JARs are
+    // literally not re-read — the latter would require a spy on ClassIndex.build.
+    @Test
+    void rebuildPreservesJarClassesFromCachedIndex() throws Exception {
+        DroolsLspServer server = TestHelperMethods.getDroolsLspServerForDocument("");
+
+        Path classDir = createClassDir("com/example/Foo.class");
+
+        Path jarPath = tempDir.resolve("dep.jar");
+        try (java.util.jar.JarOutputStream jos = new java.util.jar.JarOutputStream(
+                Files.newOutputStream(jarPath))) {
+            jos.putNextEntry(new java.util.jar.JarEntry("com/acme/Order.class"));
+            jos.closeEntry();
+        }
+
+        server.setClasspathEntriesForTest(Set.of(classDir, jarPath));
+        server.rebuildClassIndex();
+
+        ClassIndex index = server.getTextDocumentService().getClassIndexForTest();
+        assertThat(index.getMatching("Foo")).contains("com.example.Foo");
+        assertThat(index.getMatching("Or")).contains("com.acme.Order");
+
+        // Delete the JAR — rebuild should still have JAR classes from cached index
+        Files.delete(jarPath);
+        server.rebuildClassIndex();
+
+        ClassIndex indexAfter = server.getTextDocumentService().getClassIndexForTest();
+        assertThat(indexAfter.getMatching("Foo")).contains("com.example.Foo");
+        assertThat(indexAfter.getMatching("Or")).contains("com.acme.Order");
+    }
+
     private Path createClassDir(String classFilePath) throws IOException {
         Path classFile = tempDir.resolve(classFilePath);
         Files.createDirectories(classFile.getParent());

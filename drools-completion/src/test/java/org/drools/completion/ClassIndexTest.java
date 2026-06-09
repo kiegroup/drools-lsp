@@ -89,4 +89,26 @@ class ClassIndexTest {
         assertThat(index.getMatching("Any")).isEmpty();
         assertThat(index.size()).isEqualTo(0);
     }
+
+    @Test
+    void mergeIndices() throws IOException {
+        Path classesDir = tempDir.resolve("classes");
+        Files.createDirectories(classesDir.resolve("org/example"));
+        Files.createFile(classesDir.resolve("org/example/Person.class"));
+
+        Path jarPath = tempDir.resolve("dep.jar");
+        try (java.util.jar.JarOutputStream jos = new java.util.jar.JarOutputStream(
+                Files.newOutputStream(jarPath))) {
+            jos.putNextEntry(new java.util.jar.JarEntry("com/acme/Order.class"));
+            jos.closeEntry();
+        }
+
+        ClassIndex dirIndex = ClassIndex.build(Set.of(classesDir));
+        ClassIndex jarIndex = ClassIndex.build(Set.of(jarPath));
+        ClassIndex merged = ClassIndex.merge(jarIndex, dirIndex);
+
+        assertThat(merged.getMatching("Per")).containsExactly("org.example.Person");
+        assertThat(merged.getMatching("Or")).containsExactly("com.acme.Order");
+        assertThat(merged.size()).isEqualTo(2);
+    }
 }

@@ -40,6 +40,18 @@ public class ClassIndex {
         return new ClassIndex(index);
     }
 
+    public static ClassIndex merge(ClassIndex base, ClassIndex overlay) {
+        Map<String, List<String>> merged = new HashMap<>(base.index);
+        for (Map.Entry<String, List<String>> entry : overlay.index.entrySet()) {
+            merged.merge(entry.getKey(), entry.getValue(), (a, b) -> {
+                List<String> combined = new ArrayList<>(a);
+                combined.addAll(b);
+                return combined;
+            });
+        }
+        return new ClassIndex(merged);
+    }
+
     public List<String> getAll() {
         return getMatching("");
     }

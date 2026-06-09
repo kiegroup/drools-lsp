@@ -1,8 +1,10 @@
 package org.drools.lsp.server;
 
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
@@ -28,6 +30,8 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
 
     private LanguageClient client;
     private volatile Set<Path> classpathEntries = Set.of();
+    private volatile Set<Path> buildOutputDirs = Set.of();
+    private volatile ClassIndex jarClassIndex = ClassIndex.empty();
 
     public DroolsLspServer() {
         textService = new DroolsLspDocumentService(this);
@@ -49,20 +53,47 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
     }
 
     public void rebuildClassIndex() {
-        Set<Path> entries = classpathEntries;
-        if (entries.isEmpty()) {
+        Set<Path> dirs = buildOutputDirs;
+        if (dirs.isEmpty() && jarClassIndex.size() == 0) {
             return;
         }
         try {
-            ClassIndex classIndex = ClassIndex.build(entries);
-            textService.setClassIndex(classIndex);
+            ClassIndex outputIndex = ClassIndex.build(dirs);
+            textService.setClassIndex(ClassIndex.merge(jarClassIndex, outputIndex));
         } catch (Exception e) {
             logger.log(Level.WARNING, "Failed to rebuild class index", e);
         }
     }
 
-    void setClasspathEntriesForTest(Set<Path> entries) {
+    private void setResolvedClasspath(Set<Path> entries) {
         this.classpathEntries = entries;
+        this.buildOutputDirs = filterDirectories(entries);
+        Set<Path> jars = filterJars(entries);
+        this.jarClassIndex = jars.isEmpty() ? ClassIndex.empty() : ClassIndex.build(jars);
+    }
+
+    void setClasspathEntriesForTest(Set<Path> entries) {
+        setResolvedClasspath(entries);
+    }
+
+    private static Set<Path> filterDirectories(Set<Path> entries) {
+        Set<Path> dirs = new LinkedHashSet<>();
+        for (Path entry : entries) {
+            if (Files.isDirectory(entry)) {
+                dirs.add(entry);
+            }
+        }
+        return dirs;
+    }
+
+    private static Set<Path> filterJars(Set<Path> entries) {
+        Set<Path> jars = new LinkedHashSet<>();
+        for (Path entry : entries) {
+            if (!Files.isDirectory(entry)) {
+                jars.add(entry);
+            }
+        }
+        return jars;
     }
 
     @Override
@@ -79,9 +110,9 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
                 try {
                     Path rootPath = Paths.get(URI.create(rootUri));
                     Set<Path> resolved = MavenClasspathResolver.resolve(rootPath);
-                    classpathEntries = resolved;
-                    ClassIndex classIndex = ClassIndex.build(resolved);
-                    textService.setClassIndex(classIndex);
+                    setResolvedClasspath(resolved);
+                    ClassIndex outputIndex = ClassIndex.build(buildOutputDirs);
+                    textService.setClassIndex(ClassIndex.merge(jarClassIndex, outputIndex));
                 } catch (Exception e) {
                     logger.log(Level.WARNING, "Failed to build class index at startup", e);
                 }
