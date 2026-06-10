@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import com.vmware.antlr4c3.CodeCompletionCore;
+import org.antlr.v4.runtime.Token;
 import org.drools.drl.parser.antlr4.DRL10Lexer;
 import org.drools.drl.parser.antlr4.DRL10Parser;
 import org.eclipse.lsp4j.CompletionItem;
@@ -48,18 +49,27 @@ public class DRLCompletionHelper {
     }
 
     public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client) {
+        return getCompletionItems(text, caretPosition, client, ClassIndex.empty());
+    }
+
+    public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client, ClassIndex classIndex) {
         DRL10Parser drlParser = createDrlParser(text);
 
         int row = caretPosition == null ? -1 : caretPosition.getLine() + 1; // caret line position is zero based
         int col = caretPosition == null ? -1 : caretPosition.getCharacter();
 
-        drlParser.compilationUnit();
+        DRL10Parser.CompilationUnitContext compilationUnit = drlParser.compilationUnit();
         Integer nodeIndex = computeTokenIndex(drlParser, row, col);
+        String prefix = extractPrefix(drlParser, nodeIndex);
 
-        return getCompletionItems(drlParser, nodeIndex);
+        return getCompletionItems(drlParser, nodeIndex, compilationUnit, classIndex, prefix);
     }
 
     static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex) {
+        return getCompletionItems(drlParser, nodeIndex, null, ClassIndex.empty(), "");
+    }
+
+    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix) {
         CodeCompletionCore core = new CodeCompletionCore(drlParser, PREFERRED_RULES, Tokens.IGNORED);
         CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(nodeIndex, null);
 
@@ -68,11 +78,75 @@ public class DRLCompletionHelper {
             candidates.tokens.put(DRL10Lexer.DRL_RHS_END, List.of());
         }
 
-        return candidates.tokens.keySet().stream().filter(Objects::nonNull)
+        List<CompletionItem> items = candidates.tokens.keySet().stream().filter(Objects::nonNull)
                 .map(integer -> drlParser.getVocabulary().getDisplayName(integer).replace("'", ""))
                 .map(String::toLowerCase)
                 .map(k -> createCompletionItem(k, CompletionItemKind.Keyword))
                 .collect(Collectors.toList());
+
+        if (compilationUnit != null && classIndex.size() > 0 && isPatternPosition(candidates)) {
+            items.addAll(getClassCompletionItems(compilationUnit, classIndex, prefix));
+        }
+
+        return items;
+    }
+
+    private static boolean isPatternPosition(CodeCompletionCore.CandidatesCollection candidates) {
+        List<Integer> path = candidates.rules.get(DRL10Parser.RULE_drlQualifiedName);
+        if (path == null) {
+            return false;
+        }
+        return path.contains(DRL10Parser.RULE_lhsPattern)
+            || path.contains(DRL10Parser.RULE_lhsPatternBind);
+    }
+
+    private static List<CompletionItem> getClassCompletionItems(DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix) {
+        Set<String> importedFqcns = extractImports(compilationUnit);
+        List<String> matchingFqcns = classIndex.getMatching(prefix);
+        List<CompletionItem> items = new ArrayList<>();
+
+        for (String fqcn : matchingFqcns) {
+            String simpleName = fqcn.substring(fqcn.lastIndexOf('.') + 1);
+            CompletionItem item = new CompletionItem();
+            item.setLabel(simpleName);
+            item.setDetail(fqcn);
+            item.setKind(CompletionItemKind.Class);
+            item.setInsertText(simpleName);
+
+            if (importedFqcns.contains(fqcn)) {
+                item.setSortText("0_" + simpleName + "_" + fqcn);
+            } else {
+                item.setSortText("1_" + simpleName + "_" + fqcn);
+            }
+
+            items.add(item);
+        }
+
+        return items;
+    }
+
+    private static Set<String> extractImports(DRL10Parser.CompilationUnitContext compilationUnit) {
+        Set<String> imports = new HashSet<>();
+        for (DRL10Parser.DrlStatementdefContext stmt : compilationUnit.drlStatementdef()) {
+            if (stmt.importdef() instanceof DRL10Parser.ImportStandardDefContext importDef) {
+                if (importDef.DRL_FUNCTION() == null && importDef.STATIC() == null) {
+                    imports.add(importDef.drlQualifiedName().getText());
+                }
+            }
+        }
+        return imports;
+    }
+
+    private static String extractPrefix(DRL10Parser drlParser, Integer nodeIndex) {
+        if (nodeIndex == null || nodeIndex < 0 || nodeIndex >= drlParser.getInputStream().size()) {
+            return "";
+        }
+        Token token = drlParser.getInputStream().get(nodeIndex);
+        String text = token.getText();
+        if (text != null && !text.isEmpty() && Character.isJavaIdentifierStart(text.charAt(0))) {
+            return text;
+        }
+        return "";
     }
 
     static CompletionItem createCompletionItem(String label, CompletionItemKind itemKind) {

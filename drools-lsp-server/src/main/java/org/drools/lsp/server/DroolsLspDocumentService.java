@@ -7,9 +7,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
+import org.drools.completion.ClassIndex;
 import org.drools.completion.DRLCompletionHelper;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.CompletionItem;
+import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.Diagnostic;
@@ -27,11 +29,20 @@ import org.eclipse.lsp4j.services.TextDocumentService;
 public class DroolsLspDocumentService implements TextDocumentService {
 
     private final Map<String, String> sourcesMap = new ConcurrentHashMap<>();
+    private volatile ClassIndex classIndex = ClassIndex.empty();
 
     private final DroolsLspServer server;
 
     public DroolsLspDocumentService(DroolsLspServer server) {
         this.server = server;
+    }
+
+    public void setClassIndex(ClassIndex classIndex) {
+        this.classIndex = classIndex;
+    }
+
+    ClassIndex getClassIndexForTest() {
+        return classIndex;
     }
 
     @Override
@@ -68,7 +79,14 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     @Override
     public CompletableFuture<Either<List<CompletionItem>, CompletionList>> completion(CompletionParams completionParams) {
-        return CompletableFuture.supplyAsync(() -> Either.forLeft(attempt(() -> getCompletionItems(completionParams))));
+        return CompletableFuture.supplyAsync(() -> {
+            List<CompletionItem> items = attempt(() -> getCompletionItems(completionParams));
+            if (items == null) {
+                items = List.of();
+            }
+            boolean isIncomplete = items.stream().anyMatch(item -> item.getKind() == CompletionItemKind.Class);
+            return Either.forRight(new CompletionList(isIncomplete, items));
+        });
     }
 
     private <T> T attempt(Supplier<T> supplier) {
@@ -84,7 +102,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
         String text = sourcesMap.get(completionParams.getTextDocument().getUri());
 
         Position caretPosition = completionParams.getPosition();
-        List<CompletionItem> completionItems = DRLCompletionHelper.getCompletionItems(text, caretPosition, server.getClient());
+        List<CompletionItem> completionItems = DRLCompletionHelper.getCompletionItems(text, caretPosition, server.getClient(), classIndex);
 
         server.getClient().showMessage(new MessageParams(MessageType.Info, "Position=" + caretPosition));
         server.getClient().showMessage(new MessageParams(MessageType.Info, "completionItems = " + completionItems));
