@@ -13,12 +13,16 @@ import java.util.function.Supplier;
 import org.drools.completion.ClassIndex;
 import org.drools.completion.ClassMemberIndex;
 import org.drools.completion.DRLCompletionHelper;
+import org.drools.completion.DRLDefinitionHelper;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionParams;
+import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.Diagnostic;
+import org.eclipse.lsp4j.Location;
+import org.eclipse.lsp4j.LocationLink;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
@@ -127,6 +131,17 @@ public class DroolsLspDocumentService implements TextDocumentService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    @Override
+    public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>> definition(DefinitionParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            List<Location> definitions = attempt(() -> DRLDefinitionHelper.findDefinitions(
+                    uri, text, params.getPosition(), classIndex, server.getBuildOutputDirs()));
+            return Either.forLeft(definitions == null ? List.of() : definitions);
+        });
     }
 
     @Override

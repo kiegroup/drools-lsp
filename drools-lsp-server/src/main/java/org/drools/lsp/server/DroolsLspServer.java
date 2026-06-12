@@ -53,6 +53,10 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         return classpathEntries;
     }
 
+    public Set<Path> getBuildOutputDirs() {
+        return buildOutputDirs;
+    }
+
     public void rebuildClassIndex() {
         Set<Path> dirs = buildOutputDirs;
         if (dirs.isEmpty() && jarClassIndex.size() == 0) {
@@ -107,6 +111,7 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         initializeResult.getCapabilities().setTextDocumentSync(TextDocumentSyncKind.Full);
         CompletionOptions completionOptions = new CompletionOptions();
         initializeResult.getCapabilities().setCompletionProvider(completionOptions);
+        initializeResult.getCapabilities().setDefinitionProvider(true);
 
         String rootUri = params.getRootUri();
         if (rootUri != null) {

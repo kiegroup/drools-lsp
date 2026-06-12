@@ -171,11 +171,12 @@ public class DRLCompletionHelper {
     /**
      * Resolves a pattern's type name to a fully qualified class name: an
      * already-qualified name is used as-is, otherwise the imports and then
-     * the class index are consulted for the simple name.
+     * the class index are consulted for the simple name. Shared with
+     * {@link DRLDefinitionHelper}.
      */
-    private static String resolveFqcn(String patternType, String simpleName,
-                                      DRL10Parser.CompilationUnitContext compilationUnit,
-                                      ClassIndex classIndex) {
+    static String resolveFqcn(String patternType, String simpleName,
+                              DRL10Parser.CompilationUnitContext compilationUnit,
+                              ClassIndex classIndex) {
         if (patternType.indexOf('.') >= 0) {
             return patternType;
         }

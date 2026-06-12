@@ -4,6 +4,8 @@ import java.util.List;
 
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionParams;
+import org.eclipse.lsp4j.DefinitionParams;
+import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.junit.jupiter.api.Test;
@@ -73,5 +75,31 @@ class DroolsLspDocumentServiceTest {
 
     private boolean hasItem(List<CompletionItem> result, String text) {
         return result.stream().map(CompletionItem::getInsertText).anyMatch(text::equals);
+    }
+
+    @Test
+    void definitionJumpsToDeclareBlock() throws Exception {
+        String drl = """
+                package demo;
+
+                declare Person
+                  name : String
+                end
+
+                rule R
+                  when
+                    Person( name == "x" )
+                  then
+                end
+                """;
+        DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+        DefinitionParams params = new DefinitionParams(
+                new TextDocumentIdentifier("myDocument"), new Position(8, 6));
+        List<? extends Location> locations = service.definition(params).get().getLeft();
+
+        assertThat(locations).hasSize(1);
+        assertThat(locations.get(0).getUri()).isEqualTo("myDocument");
+        assertThat(locations.get(0).getRange().getStart().getLine()).isEqualTo(2);
     }
 }
