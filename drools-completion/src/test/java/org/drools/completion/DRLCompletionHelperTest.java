@@ -217,6 +217,64 @@ class DRLCompletionHelperTest {
         }
     }
 
+    @Test
+    void fieldCompletionFromDeclaredType() {
+        String text = """
+                package demo;
+
+                declare Person
+                  name : String
+                  age : int
+                end
+
+                rule R
+                  when
+                    Person(  )
+                  then
+                end
+                """;
+
+        // Inside the pattern's parens.
+        Position caretPosition = new Position(9, 12);
+        List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(
+                text, caretPosition, getLanguageClient(), ClassIndex.empty());
+
+        List<CompletionItem> fieldItems = result.stream()
+                .filter(item -> item.getKind() == CompletionItemKind.Field)
+                .toList();
+        assertThat(fieldItems).extracting(CompletionItem::getLabel)
+                .contains("name", "age");
+        CompletionItem nameItem = fieldItems.stream()
+                .filter(item -> item.getLabel().equals("name")).findFirst().orElseThrow();
+        assertThat(nameItem.getDetail()).isEqualTo("String");
+    }
+
+    @Test
+    void fieldCompletionFromClasspathTypeViaImport() {
+        String text = """
+                package demo;
+
+                import org.drools.completion.fixtures.Pet;
+
+                rule R
+                  when
+                    Pet(  )
+                  then
+                end
+                """;
+
+        ClassMemberIndex memberIndex = new ClassMemberIndex(getClass().getClassLoader());
+        Position caretPosition = new Position(6, 9);
+        List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(
+                text, caretPosition, getLanguageClient(), ClassIndex.empty(), memberIndex);
+
+        List<String> fieldLabels = result.stream()
+                .filter(item -> item.getKind() == CompletionItemKind.Field)
+                .map(CompletionItem::getLabel)
+                .toList();
+        assertThat(fieldLabels).contains("name", "friendly", "legs");
+    }
+
     private List<String> completionItemStrings(List<CompletionItem> result) {
         return result.stream().map(CompletionItem::getInsertText).toList();
     }

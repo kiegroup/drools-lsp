@@ -11,6 +11,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.drools.completion.ClassIndex;
+import org.drools.completion.ClassMemberIndex;
 import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
@@ -70,6 +71,9 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         this.buildOutputDirs = filterDirectories(entries);
         Set<Path> jars = filterJars(entries);
         this.jarClassIndex = jars.isEmpty() ? ClassIndex.empty() : ClassIndex.build(jars);
+        // Member lookup reflects over the full classpath (jars + class dirs)
+        // lazily — building the index itself loads no classes.
+        textService.setClassMemberIndex(ClassMemberIndex.of(entries));
     }
 
     void setClasspathEntriesForTest(Set<Path> entries) {
