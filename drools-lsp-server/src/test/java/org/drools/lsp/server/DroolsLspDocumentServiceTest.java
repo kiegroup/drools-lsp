@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionParams;
+import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.junit.jupiter.api.Test;
@@ -73,5 +74,27 @@ class DroolsLspDocumentServiceTest {
 
     private boolean hasItem(List<CompletionItem> result, String text) {
         return result.stream().map(CompletionItem::getInsertText).anyMatch(text::equals);
+    }
+
+    @Test
+    void brokenDocumentProducesSyntaxDiagnostics() {
+        String brokenDrl = "rule R when Person( then end";
+        DroolsLspDocumentService service = getDroolsLspDocumentService(brokenDrl);
+
+        List<Diagnostic> diags = service.validate("myDocument");
+        assertThat(diags).isNotEmpty();
+        assertThat(diags.get(0).getSource()).isEqualTo("drools-parser");
+    }
+
+    @Test
+    void cleanDocumentProducesNoDiagnostics() {
+        String drl = "package demo;\n"
+                + "rule \"R\"\n"
+                + "  when\n"
+                + "  then\n"
+                + "end\n";
+        DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+        assertThat(service.validate("myDocument")).isEmpty();
     }
 }
