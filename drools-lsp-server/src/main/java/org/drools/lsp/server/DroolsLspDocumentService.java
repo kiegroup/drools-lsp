@@ -14,6 +14,7 @@ import org.drools.completion.ClassIndex;
 import org.drools.completion.ClassMemberIndex;
 import org.drools.completion.DRLCompletionHelper;
 import org.drools.completion.DRLDefinitionHelper;
+import org.drools.completion.DRLHoverHelper;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
@@ -27,6 +28,8 @@ import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DidSaveTextDocumentParams;
+import org.eclipse.lsp4j.Hover;
+import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.MessageParams;
 import org.eclipse.lsp4j.MessageType;
 import org.eclipse.lsp4j.Position;
@@ -131,6 +134,16 @@ public class DroolsLspDocumentService implements TextDocumentService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    @Override
+    public CompletableFuture<Hover> hover(HoverParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            return attempt(() -> DRLHoverHelper.hover(
+                    text, params.getPosition(), classIndex, classMemberIndex, toPath(uri)));
+        });
     }
 
     @Override

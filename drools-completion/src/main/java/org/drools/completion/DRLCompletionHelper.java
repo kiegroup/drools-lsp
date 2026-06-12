@@ -196,9 +196,9 @@ public class DRLCompletionHelper {
     /**
      * Returns the type name of the deepest {@code lhsPattern} whose token
      * span contains {@code tokenIndex}, or {@code null} when the caret is
-     * not inside a pattern.
+     * not inside a pattern. Shared with {@link DRLHoverHelper}.
      */
-    private static String findEnclosingPatternTypeName(ParseTree node, int tokenIndex) {
+    static String findEnclosingPatternTypeName(ParseTree node, int tokenIndex) {
         if (!(node instanceof ParserRuleContext ctx)) {
             return null;
         }

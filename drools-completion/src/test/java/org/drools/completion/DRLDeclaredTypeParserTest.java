@@ -96,6 +96,29 @@ class DRLDeclaredTypeParserTest {
     }
 
     @Test
+    void docCommentAboveDeclareIsExtracted() {
+        String drl = "package demo;\n"
+                + "/**\n"
+                + " * A person known to the rules.\n"
+                + " * Second line.\n"
+                + " */\n"
+                + "declare Person\n"
+                + "  name : String\n"
+                + "end\n";
+        List<DeclaredType> types = DRLDeclaredTypeParser.parseDeclaredTypes(drl);
+
+        assertThat(types).hasSize(1);
+        assertThat(types.get(0).doc)
+                .isEqualTo("A person known to the rules.\nSecond line.");
+    }
+
+    @Test
+    void declareWithoutDocCommentHasNullDoc() {
+        String drl = "declare Person\n  name : String\nend\n";
+        assertThat(DRLDeclaredTypeParser.parseDeclaredTypes(drl).get(0).doc).isNull();
+    }
+
+    @Test
     void cachedFileParsingHandlesMissingFiles(@TempDir Path tmp) {
         assertThat(DRLDeclaredTypeParser.parseDeclaredTypesCached(tmp.resolve("missing.drl"))).isEmpty();
         assertThat(DRLDeclaredTypeParser.parseDeclaredTypesCached(null)).isEmpty();

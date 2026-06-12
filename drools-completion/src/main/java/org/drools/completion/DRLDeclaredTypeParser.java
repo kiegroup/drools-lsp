@@ -93,11 +93,57 @@ public final class DRLDeclaredTypeParser {
             lexer.addErrorListener(SILENT);
             parser.removeErrorListeners();
             parser.addErrorListener(SILENT);
-            return extractFromCompilationUnit(parser.compilationUnit());
+            return attachDocComments(extractFromCompilationUnit(parser.compilationUnit()), text);
         } catch (Exception e) {
             logger.fine(() -> "Failed to parse DRL for declared types: " + e.getMessage());
         }
         return types;
+    }
+
+    /**
+     * Attaches the cleaned {@code /** ... *}{@code /} comment found directly
+     * above each declare block. Anchored at the known declare positions, so
+     * doc-like text elsewhere (strings, consequences) can never be picked up.
+     */
+    private static List<DeclaredType> attachDocComments(List<DeclaredType> types, String text) {
+        if (types.isEmpty()) {
+            return types;
+        }
+        String[] lines = text.split("\r?\n", -1);
+        List<DeclaredType> out = new ArrayList<>(types.size());
+        for (DeclaredType dt : types) {
+            String doc = docCommentAbove(lines, dt.nameLine);
+            out.add(doc == null ? dt
+                    : new DeclaredType(dt.name, dt.fields, dt.isEnum,
+                                       dt.nameLine, dt.nameCol, dt.extendsName, doc));
+        }
+        return out;
+    }
+
+    private static String docCommentAbove(String[] lines, int declareLine) {
+        int last = declareLine - 1;
+        if (last < 0 || last >= lines.length || !lines[last].trim().endsWith("*/")) {
+            return null;
+        }
+        int first = last;
+        while (first >= 0 && !lines[first].trim().startsWith("/**")) {
+            first--;
+        }
+        if (first < 0) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        for (int i = first; i <= last; i++) {
+            String s = lines[i].trim()
+                    .replaceFirst("^/\\*\\*", "")
+                    .replaceFirst("\\*/$", "")
+                    .replaceFirst("^\\*", "")
+                    .trim();
+            if (!s.isEmpty()) {
+                parts.add(s);
+            }
+        }
+        return parts.isEmpty() ? null : String.join("\n", parts);
     }
 
     /**

@@ -17,19 +17,30 @@ public class DeclaredType {
      * when no inheritance is declared.
      */
     public final String extendsName;
+    /**
+     * Cleaned text of the {@code /** ... *}{@code /} comment directly above
+     * the declare block, or {@code null} when there is none.
+     */
+    public final String doc;
 
     DeclaredType(String name, List<Field> fields, boolean isEnum,
                  int nameLine, int nameCol) {
-        this(name, fields, isEnum, nameLine, nameCol, null);
+        this(name, fields, isEnum, nameLine, nameCol, null, null);
     }
 
     DeclaredType(String name, List<Field> fields, boolean isEnum,
                  int nameLine, int nameCol, String extendsName) {
+        this(name, fields, isEnum, nameLine, nameCol, extendsName, null);
+    }
+
+    DeclaredType(String name, List<Field> fields, boolean isEnum,
+                 int nameLine, int nameCol, String extendsName, String doc) {
         this.name = name;
         this.fields = fields;
         this.isEnum = isEnum;
         this.nameLine = nameLine;
         this.nameCol = nameCol;
         this.extendsName = extendsName;
+        this.doc = doc;
     }
 }

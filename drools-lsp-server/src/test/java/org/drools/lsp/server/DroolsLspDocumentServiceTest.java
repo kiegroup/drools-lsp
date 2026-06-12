@@ -5,6 +5,8 @@ import java.util.List;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DefinitionParams;
+import org.eclipse.lsp4j.Hover;
+import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
@@ -101,5 +103,32 @@ class DroolsLspDocumentServiceTest {
         assertThat(locations).hasSize(1);
         assertThat(locations.get(0).getUri()).isEqualTo("myDocument");
         assertThat(locations.get(0).getRange().getStart().getLine()).isEqualTo(2);
+    }
+
+    @Test
+    void hoverShowsDeclaredTypeStructure() throws Exception {
+        String drl = """
+                package demo;
+
+                declare Person
+                  name : String
+                end
+
+                rule R
+                  when
+                    Person( name == "x" )
+                  then
+                end
+                """;
+        DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+        HoverParams params = new HoverParams(
+                new TextDocumentIdentifier("myDocument"), new Position(8, 6));
+        Hover hover = service.hover(params).get();
+
+        assertThat(hover).isNotNull();
+        assertThat(hover.getContents().getRight().getValue())
+                .contains("declare Person")
+                .contains("name : String");
     }
 }
