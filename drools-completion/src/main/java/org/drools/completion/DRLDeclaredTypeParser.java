@@ -4,8 +4,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
@@ -98,6 +100,54 @@ public final class DRLDeclaredTypeParser {
             logger.fine(() -> "Failed to parse DRL for declared types: " + e.getMessage());
         }
         return types;
+    }
+
+    /**
+     * Finds a declared type by simple name: in the already-extracted types of
+     * the current document first, then in sibling files from the active
+     * {@link WorkspaceSiblingResolver}.
+     */
+    static DeclaredType findDeclaredType(String name, List<DeclaredType> currentDocTypes,
+                                         Path documentPath) {
+        for (DeclaredType dt : currentDocTypes) {
+            if (name.equals(dt.name)) {
+                return dt;
+            }
+        }
+        if (documentPath != null) {
+            for (Path sibling : WorkspaceSiblingResolvers.active().resolveSiblings(documentPath)) {
+                for (DeclaredType dt : parseDeclaredTypesCached(sibling)) {
+                    if (name.equals(dt.name)) {
+                        return dt;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns the type's own fields followed by the fields inherited through
+     * its {@code extends} chain (resolved across the current document and
+     * sibling files; cycle- and depth-guarded).
+     */
+    static List<Field> fieldsIncludingInherited(DeclaredType type,
+                                                List<DeclaredType> currentDocTypes,
+                                                Path documentPath) {
+        List<Field> out = new ArrayList<>(type.fields);
+        Set<String> seen = new HashSet<>();
+        seen.add(type.name);
+        String parentName = type.extendsName;
+        int depth = 0;
+        while (parentName != null && depth++ < 10 && seen.add(parentName)) {
+            DeclaredType parent = findDeclaredType(parentName, currentDocTypes, documentPath);
+            if (parent == null) {
+                break;
+            }
+            out.addAll(parent.fields);
+            parentName = parent.extendsName;
+        }
+        return out;
     }
 
     /**

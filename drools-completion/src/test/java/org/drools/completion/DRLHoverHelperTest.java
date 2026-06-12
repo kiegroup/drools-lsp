@@ -95,6 +95,46 @@ class DRLHoverHelperTest {
         assertThat(md).contains("name").contains("friendly").contains("legs");
     }
 
+    private static final String EXTENDS_DRL = """
+            package demo;
+
+            declare Person
+              name : String
+            end
+
+            declare Employee extends Person
+              salary : double
+            end
+
+            rule R
+              when
+                Employee( name == "x" )
+              then
+            end
+            """;
+
+    @Test
+    void hoverOnDeclaredTypeShowsInheritedFields() {
+        // Caret on "Employee" in the pattern.
+        Hover hover = DRLHoverHelper.hover(EXTENDS_DRL, new Position(12, 6),
+                ClassIndex.empty(), ClassMemberIndex.empty(), null);
+
+        String md = content(hover);
+        assertThat(md).contains("declare Employee extends Person");
+        assertThat(md).contains("salary : double");
+        assertThat(md).contains("name : String"); // inherited
+    }
+
+    @Test
+    void hoverOnInheritedFieldResolvesThroughTheParent() {
+        // Caret on "name" — declared on Person, used in an Employee pattern.
+        Hover hover = DRLHoverHelper.hover(EXTENDS_DRL, new Position(12, 15),
+                ClassIndex.empty(), ClassMemberIndex.empty(), null);
+
+        String md = content(hover);
+        assertThat(md).contains("name").contains("String");
+    }
+
     @Test
     void hoverOnUnknownSymbolReturnsNull() {
         assertThat(DRLHoverHelper.hover(DECLARE_DRL, new Position(7, 3),

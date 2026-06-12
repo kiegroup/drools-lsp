@@ -60,9 +60,13 @@ public final class DRLHoverHelper {
         }
 
         // 1. DRL-declared types: current document, then siblings.
-        DeclaredType declared = findDeclaredType(word, text, documentPath);
+        List<DeclaredType> currentDocTypes = DRLDeclaredTypeParser.parseDeclaredTypes(text);
+        DeclaredType declared =
+                DRLDeclaredTypeParser.findDeclaredType(word, currentDocTypes, documentPath);
         if (declared != null) {
-            return markdown(renderDeclared(declared));
+            List<Field> allFields = DRLDeclaredTypeParser.fieldsIncludingInherited(
+                    declared, currentDocTypes, documentPath);
+            return markdown(renderDeclared(declared, allFields));
         }
 
         DRL10Parser parser;
@@ -83,7 +87,7 @@ public final class DRLHoverHelper {
             String patternType = DRLCompletionHelper.findEnclosingPatternTypeName(
                     compilationUnit, nodeIndex);
             if (patternType != null && !patternType.equals(word)) {
-                Field field = findField(patternType, word, text, documentPath,
+                Field field = findField(patternType, word, currentDocTypes, documentPath,
                                         compilationUnit, classIndex, memberIndex);
                 if (field != null) {
                     String owner = patternType.substring(patternType.lastIndexOf('.') + 1);
@@ -104,32 +108,17 @@ public final class DRLHoverHelper {
         return null;
     }
 
-    private static DeclaredType findDeclaredType(String name, String text, Path documentPath) {
-        for (DeclaredType dt : DRLDeclaredTypeParser.parseDeclaredTypes(text)) {
-            if (name.equals(dt.name)) {
-                return dt;
-            }
-        }
-        if (documentPath != null) {
-            for (Path sibling : WorkspaceSiblingResolvers.active().resolveSiblings(documentPath)) {
-                for (DeclaredType dt : DRLDeclaredTypeParser.parseDeclaredTypesCached(sibling)) {
-                    if (name.equals(dt.name)) {
-                        return dt;
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    private static Field findField(String patternType, String fieldName, String text,
+    private static Field findField(String patternType, String fieldName,
+                                   List<DeclaredType> currentDocTypes,
                                    Path documentPath, DRL10Parser.CompilationUnitContext compilationUnit,
                                    ClassIndex classIndex, ClassMemberIndex memberIndex) {
         String simpleName = patternType.substring(patternType.lastIndexOf('.') + 1);
-        DeclaredType declared = findDeclaredType(simpleName, text, documentPath);
+        DeclaredType declared =
+                DRLDeclaredTypeParser.findDeclaredType(simpleName, currentDocTypes, documentPath);
         List<Field> fields;
         if (declared != null) {
-            fields = declared.fields;
+            fields = DRLDeclaredTypeParser.fieldsIncludingInherited(
+                    declared, currentDocTypes, documentPath);
         } else {
             String fqcn = DRLCompletionHelper.resolveFqcn(patternType, simpleName,
                                                           compilationUnit, classIndex);
@@ -143,7 +132,13 @@ public final class DRLHoverHelper {
         return null;
     }
 
-    private static String renderDeclared(DeclaredType dt) {
+    /**
+     * @param allFields the type's own fields followed by inherited ones, as
+     *                  produced by
+     *                  {@link DRLDeclaredTypeParser#fieldsIncludingInherited};
+     *                  the inherited tail is rendered as a separate section
+     */
+    private static String renderDeclared(DeclaredType dt, List<Field> allFields) {
         StringBuilder sb = new StringBuilder();
         if (dt.doc != null) {
             sb.append(dt.doc).append("\n\n");
@@ -166,6 +161,14 @@ public final class DRLHoverHelper {
             }
         }
         sb.append("end\n```");
+
+        List<Field> inherited = allFields.subList(dt.fields.size(), allFields.size());
+        if (!inherited.isEmpty()) {
+            sb.append("\n\n_Inherited:_");
+            for (Field field : inherited) {
+                sb.append("\n- ").append(field.name).append(" : ").append(field.type);
+            }
+        }
         return sb.toString();
     }
 

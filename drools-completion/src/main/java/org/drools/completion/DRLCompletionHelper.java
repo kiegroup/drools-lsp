@@ -132,20 +132,15 @@ public class DRLCompletionHelper {
         }
         String simpleName = patternType.substring(patternType.lastIndexOf('.') + 1);
 
-        // DRL-declared types win over classpath types.
-        for (DeclaredType declared : DRLDeclaredTypeParser.extractFromCompilationUnit(compilationUnit)) {
-            if (simpleName.equals(declared.name)) {
-                return fieldItems(declared.fields);
-            }
-        }
-        if (documentPath != null) {
-            for (Path sibling : WorkspaceSiblingResolvers.active().resolveSiblings(documentPath)) {
-                for (DeclaredType declared : DRLDeclaredTypeParser.parseDeclaredTypesCached(sibling)) {
-                    if (simpleName.equals(declared.name)) {
-                        return fieldItems(declared.fields);
-                    }
-                }
-            }
+        // DRL-declared types win over classpath types; fields include the
+        // ones inherited through the extends chain.
+        List<DeclaredType> currentDocTypes =
+                DRLDeclaredTypeParser.extractFromCompilationUnit(compilationUnit);
+        DeclaredType declared =
+                DRLDeclaredTypeParser.findDeclaredType(simpleName, currentDocTypes, documentPath);
+        if (declared != null) {
+            return fieldItems(DRLDeclaredTypeParser.fieldsIncludingInherited(
+                    declared, currentDocTypes, documentPath));
         }
 
         String fqcn = resolveFqcn(patternType, simpleName, compilationUnit, classIndex);
