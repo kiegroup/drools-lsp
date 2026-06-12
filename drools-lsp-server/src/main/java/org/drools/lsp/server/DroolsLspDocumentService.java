@@ -1,5 +1,8 @@
 package org.drools.lsp.server;
 
+import java.net.URI;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -105,15 +108,25 @@ public class DroolsLspDocumentService implements TextDocumentService {
     }
 
     public List<CompletionItem> getCompletionItems(CompletionParams completionParams) {
-        String text = sourcesMap.get(completionParams.getTextDocument().getUri());
+        String uri = completionParams.getTextDocument().getUri();
+        String text = sourcesMap.get(uri);
 
         Position caretPosition = completionParams.getPosition();
-        List<CompletionItem> completionItems = DRLCompletionHelper.getCompletionItems(text, caretPosition, server.getClient(), classIndex, classMemberIndex);
+        List<CompletionItem> completionItems = DRLCompletionHelper.getCompletionItems(text, caretPosition, server.getClient(), classIndex, classMemberIndex, toPath(uri));
 
         server.getClient().showMessage(new MessageParams(MessageType.Info, "Position=" + caretPosition));
         server.getClient().showMessage(new MessageParams(MessageType.Info, "completionItems = " + completionItems));
 
         return completionItems;
+    }
+
+    /** Converts a document URI to a filesystem path, or null for non-file URIs. */
+    private static Path toPath(String uri) {
+        try {
+            return Paths.get(URI.create(uri));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Override

@@ -19,6 +19,7 @@ import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.ShowMessageRequestParams;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -247,6 +248,36 @@ class DRLCompletionHelperTest {
         CompletionItem nameItem = fieldItems.stream()
                 .filter(item -> item.getLabel().equals("name")).findFirst().orElseThrow();
         assertThat(nameItem.getDetail()).isEqualTo("String");
+    }
+
+    @Test
+    void fieldCompletionFromSiblingFileDeclare(@TempDir Path tmp) throws IOException {
+        // The Person type is declared in a sibling .drl file in the same
+        // directory as the current document.
+        Files.writeString(tmp.resolve("Types.drl"),
+                "package demo;\ndeclare Person\n  name : String\n  age : int\nend\n");
+        Path currentDoc = tmp.resolve("rules.drl");
+        String text = """
+                package demo;
+
+                rule R
+                  when
+                    Person(  )
+                  then
+                end
+                """;
+        Files.writeString(currentDoc, text);
+
+        Position caretPosition = new Position(4, 12);
+        List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(
+                text, caretPosition, getLanguageClient(),
+                ClassIndex.empty(), ClassMemberIndex.empty(), currentDoc);
+
+        List<String> fieldLabels = result.stream()
+                .filter(item -> item.getKind() == CompletionItemKind.Field)
+                .map(CompletionItem::getLabel)
+                .toList();
+        assertThat(fieldLabels).contains("name", "age");
     }
 
     @Test

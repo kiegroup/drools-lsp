@@ -15,6 +15,7 @@
  */
 package org.drools.completion;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -59,6 +60,15 @@ public class DRLCompletionHelper {
     }
 
     public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client, ClassIndex classIndex, ClassMemberIndex memberIndex) {
+        return getCompletionItems(text, caretPosition, client, classIndex, memberIndex, null);
+    }
+
+    /**
+     * @param documentPath filesystem location of the document, used to find
+     *                     sibling DRL files; {@code null} for non-file
+     *                     documents (sibling declares are then unavailable)
+     */
+    public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client, ClassIndex classIndex, ClassMemberIndex memberIndex, Path documentPath) {
         DRL10Parser drlParser = createDrlParser(text);
 
         int row = caretPosition == null ? -1 : caretPosition.getLine() + 1; // caret line position is zero based
@@ -68,14 +78,14 @@ public class DRLCompletionHelper {
         Integer nodeIndex = computeTokenIndex(drlParser, row, col);
         String prefix = extractPrefix(drlParser, nodeIndex);
 
-        return getCompletionItems(drlParser, nodeIndex, compilationUnit, classIndex, prefix, memberIndex);
+        return getCompletionItems(drlParser, nodeIndex, compilationUnit, classIndex, prefix, memberIndex, documentPath);
     }
 
     static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex) {
-        return getCompletionItems(drlParser, nodeIndex, null, ClassIndex.empty(), "", ClassMemberIndex.empty());
+        return getCompletionItems(drlParser, nodeIndex, null, ClassIndex.empty(), "", ClassMemberIndex.empty(), null);
     }
 
-    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix, ClassMemberIndex memberIndex) {
+    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix, ClassMemberIndex memberIndex, Path documentPath) {
         CodeCompletionCore core = new CodeCompletionCore(drlParser, PREFERRED_RULES, Tokens.IGNORED);
         CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(nodeIndex, null);
 
@@ -95,7 +105,7 @@ public class DRLCompletionHelper {
         }
 
         if (compilationUnit != null && isConstraintPosition(candidates)) {
-            items.addAll(getFieldCompletionItems(compilationUnit, nodeIndex, classIndex, memberIndex));
+            items.addAll(getFieldCompletionItems(compilationUnit, nodeIndex, classIndex, memberIndex, documentPath));
         }
 
         return items;
@@ -108,23 +118,33 @@ public class DRLCompletionHelper {
 
     /**
      * Completion items for the fields of the pattern enclosing the caret:
-     * fields of a DRL-declared type in the same document, or bean
+     * fields of a DRL-declared type (current document first, then sibling
+     * files from the active {@link WorkspaceSiblingResolver}), or bean
      * properties/fields of a classpath type resolved through imports and the
      * class index.
      */
     private static List<CompletionItem> getFieldCompletionItems(DRL10Parser.CompilationUnitContext compilationUnit,
                                                                 int nodeIndex, ClassIndex classIndex,
-                                                                ClassMemberIndex memberIndex) {
+                                                                ClassMemberIndex memberIndex, Path documentPath) {
         String patternType = findEnclosingPatternTypeName(compilationUnit, nodeIndex);
         if (patternType == null || patternType.isEmpty()) {
             return List.of();
         }
         String simpleName = patternType.substring(patternType.lastIndexOf('.') + 1);
 
-        // DRL-declared types in the current document win over classpath types.
+        // DRL-declared types win over classpath types.
         for (DeclaredType declared : DRLDeclaredTypeParser.extractFromCompilationUnit(compilationUnit)) {
             if (simpleName.equals(declared.name)) {
                 return fieldItems(declared.fields);
+            }
+        }
+        if (documentPath != null) {
+            for (Path sibling : WorkspaceSiblingResolvers.active().resolveSiblings(documentPath)) {
+                for (DeclaredType declared : DRLDeclaredTypeParser.parseDeclaredTypesCached(sibling)) {
+                    if (simpleName.equals(declared.name)) {
+                        return fieldItems(declared.fields);
+                    }
+                }
             }
         }
 

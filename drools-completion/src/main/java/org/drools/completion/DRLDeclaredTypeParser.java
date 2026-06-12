@@ -1,7 +1,12 @@
 package org.drools.completion;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
 import org.antlr.v4.runtime.BaseErrorListener;
@@ -31,6 +36,45 @@ public final class DRLDeclaredTypeParser {
     };
 
     private DRLDeclaredTypeParser() {
+    }
+
+    private static final class CachedEntry {
+        final long modMillis;
+        final List<DeclaredType> types;
+
+        CachedEntry(long modMillis, List<DeclaredType> types) {
+            this.modMillis = modMillis;
+            this.types = types;
+        }
+    }
+
+    /** Per-file cache keyed by normalized absolute path, valid by mtime. */
+    private static final Map<Path, CachedEntry> FILE_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * Parses declared types from a file, serving a cached result while the
+     * file's modification time is unchanged. Missing/unreadable files yield
+     * an empty list.
+     */
+    public static List<DeclaredType> parseDeclaredTypesCached(Path file) {
+        if (file == null || !Files.isRegularFile(file)) {
+            return Collections.emptyList();
+        }
+        try {
+            Path key = file.toAbsolutePath().normalize();
+            long modMillis = Files.getLastModifiedTime(file).toMillis();
+            CachedEntry cached = FILE_CACHE.get(key);
+            if (cached != null && cached.modMillis == modMillis) {
+                return cached.types;
+            }
+            List<DeclaredType> types =
+                    Collections.unmodifiableList(parseDeclaredTypes(Files.readString(file)));
+            FILE_CACHE.put(key, new CachedEntry(modMillis, types));
+            return types;
+        } catch (Exception e) {
+            logger.fine(() -> "Failed to read/parse " + file + ": " + e.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     /**
