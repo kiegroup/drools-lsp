@@ -141,7 +141,9 @@ public final class DRLHoverHelper {
     private static String renderDeclared(DeclaredType dt, List<Field> allFields) {
         StringBuilder sb = new StringBuilder();
         if (dt.doc != null) {
-            sb.append(dt.doc).append("\n\n");
+            // No link-target index yet, so {@link} references render as
+            // their code/plain fallbacks.
+            sb.append(DRLDocFormatter.format(dt.doc, null)).append("\n\n");
         }
         sb.append("```\n");
         sb.append("declare ").append(dt.isEnum ? "enum " : "").append(dt.name);

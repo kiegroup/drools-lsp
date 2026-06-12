@@ -47,6 +47,28 @@ class DRLHoverHelperTest {
     }
 
     @Test
+    void hoverDocCommentExpandsJavadocInlineTags() {
+        String drl = """
+                package demo;
+
+                /** Tracks {@code name} values. */
+                declare Person
+                  name : String
+                end
+
+                rule R
+                  when
+                    Person( )
+                  then
+                end
+                """;
+        Hover hover = DRLHoverHelper.hover(drl, new Position(9, 6),
+                ClassIndex.empty(), ClassMemberIndex.empty(), null);
+
+        assertThat(content(hover)).contains("Tracks `name` values.");
+    }
+
+    @Test
     void hoverOnFieldShowsItsTypeAndOwner() {
         // Caret on "name" inside the constraint.
         Hover hover = DRLHoverHelper.hover(DECLARE_DRL, new Position(10, 13),
