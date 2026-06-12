@@ -1,5 +1,6 @@
 package org.drools.lsp.server;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +11,7 @@ import java.util.function.Supplier;
 import org.drools.completion.ClassIndex;
 import org.drools.completion.DRLCompletionHelper;
 import org.drools.completion.DRLDiagnosticHelper;
+import org.drools.completion.DRLLintHelper;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
@@ -58,12 +60,15 @@ public class DroolsLspDocumentService implements TextDocumentService {
     }
 
     /**
-     * Runs syntax validation over the current text of {@code uri} and
-     * returns the resulting diagnostics (empty when the document is unknown
-     * or parses clean).
+     * Runs syntax validation and the structural lint passes over the
+     * current text of {@code uri} and returns the combined diagnostics
+     * (empty when the document is unknown or clean).
      */
     List<Diagnostic> validate(String uri) {
-        return DRLDiagnosticHelper.validate(sourcesMap.get(uri));
+        String text = sourcesMap.get(uri);
+        List<Diagnostic> diagnostics = new ArrayList<>(DRLDiagnosticHelper.validate(text));
+        diagnostics.addAll(DRLLintHelper.lint(text));
+        return diagnostics;
     }
 
     @Override
