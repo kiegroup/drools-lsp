@@ -9,6 +9,7 @@ import java.util.function.Supplier;
 
 import org.drools.completion.ClassIndex;
 import org.drools.completion.DRLCompletionHelper;
+import org.drools.completion.DRLDiagnosticHelper;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
@@ -47,27 +48,31 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     @Override
     public void didOpen(DidOpenTextDocumentParams params) {
-        sourcesMap.put(params.getTextDocument().getUri(), params.getTextDocument().getText());
+        String uri = params.getTextDocument().getUri();
+        sourcesMap.put(uri, params.getTextDocument().getText());
         CompletableFuture.runAsync(() ->
                 server.getClient().publishDiagnostics(
-                        new PublishDiagnosticsParams(params.getTextDocument().getUri(), validate())
+                        new PublishDiagnosticsParams(uri, validate(uri))
                 )
         );
     }
 
-    private List<Diagnostic> validate() {
-        return Collections.emptyList();
+    /**
+     * Runs syntax validation over the current text of {@code uri} and
+     * returns the resulting diagnostics (empty when the document is unknown
+     * or parses clean).
+     */
+    List<Diagnostic> validate(String uri) {
+        return DRLDiagnosticHelper.validate(sourcesMap.get(uri));
     }
 
     @Override
     public void didChange(DidChangeTextDocumentParams params) {
-        sourcesMap.put(params.getTextDocument().getUri(), params.getContentChanges().get(0).getText());
-        // modify internal state
-//        this.documentVersions.put(params.getTextDocument().getUri(), params.getTextDocument().getVersion() + 1);
-        // send notification
+        String uri = params.getTextDocument().getUri();
+        sourcesMap.put(uri, params.getContentChanges().get(0).getText());
         CompletableFuture.runAsync(() ->
                 server.getClient().publishDiagnostics(
-                        new PublishDiagnosticsParams(params.getTextDocument().getUri(), validate())
+                        new PublishDiagnosticsParams(uri, validate(uri))
                 )
         );
     }
@@ -112,6 +117,15 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     @Override
     public void didClose(DidCloseTextDocumentParams params) {
+        String uri = params.getTextDocument().getUri();
+        sourcesMap.remove(uri);
+        // Clear the document's diagnostics so stale squiggles don't survive
+        // the editor closing the file.
+        CompletableFuture.runAsync(() ->
+                server.getClient().publishDiagnostics(
+                        new PublishDiagnosticsParams(uri, Collections.emptyList())
+                )
+        );
     }
 
     @Override

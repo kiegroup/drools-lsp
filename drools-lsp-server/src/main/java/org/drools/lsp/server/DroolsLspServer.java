@@ -33,6 +33,9 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
     private volatile Set<Path> buildOutputDirs = Set.of();
     private volatile ClassIndex jarClassIndex = ClassIndex.empty();
 
+    /** Tracks whether {@code shutdown} preceded {@code exit} (LSP spec). */
+    private volatile boolean shutdownReceived = false;
+
     public DroolsLspServer() {
         textService = new DroolsLspDocumentService(this);
         workspaceService = new DroolsLspWorkspaceService(this);
@@ -124,12 +127,14 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
 
     @Override
     public CompletableFuture<Object> shutdown() {
+        shutdownReceived = true;
         return CompletableFuture.completedFuture(null);
     }
 
     @Override
     public void exit() {
-        System.exit(0);
+        // LSP spec: exit code 0 only when a shutdown request was received first.
+        System.exit(shutdownReceived ? 0 : 1);
     }
 
     @Override
