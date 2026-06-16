@@ -59,4 +59,16 @@ class ClassMemberIndexTest {
     void emptyIndexYieldsNoMembers() {
         assertThat(ClassMemberIndex.empty().membersOf("java.lang.String")).isEmpty();
     }
+
+    @Test
+    void closingDoesNotCloseExternallyOwnedLoader() throws Exception {
+        ClassLoader borrowed = getClass().getClassLoader();
+        ClassMemberIndex borrowedIndex = new ClassMemberIndex(borrowed);
+
+        borrowedIndex.close();
+        borrowedIndex.close();
+
+        assertThat(borrowed.loadClass("java.lang.String")).isNotNull();
+        ClassMemberIndex.empty().close(); // must not throw
+    }
 }

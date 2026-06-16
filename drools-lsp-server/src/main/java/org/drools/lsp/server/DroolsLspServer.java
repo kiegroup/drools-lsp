@@ -33,6 +33,7 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
     private volatile Set<Path> classpathEntries = Set.of();
     private volatile Set<Path> buildOutputDirs = Set.of();
     private volatile ClassIndex jarClassIndex = ClassIndex.empty();
+    private volatile ClassMemberIndex classMemberIndex = ClassMemberIndex.empty();
 
     /** Tracks whether {@code shutdown} preceded {@code exit} (LSP spec). */
     private volatile boolean shutdownReceived = false;
@@ -64,6 +65,8 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         try {
             ClassIndex outputIndex = ClassIndex.build(dirs);
             textService.setClassIndex(ClassIndex.merge(jarClassIndex, outputIndex));
+            // Fresh loader so recompiled classes aren't served from the old one's cache.
+            swapMemberIndex(ClassMemberIndex.of(classpathEntries));
         } catch (Exception e) {
             logger.log(Level.WARNING, "Failed to rebuild class index", e);
         }
@@ -76,7 +79,20 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         this.jarClassIndex = jars.isEmpty() ? ClassIndex.empty() : ClassIndex.build(jars);
         // Member lookup reflects over the full classpath (jars + class dirs)
         // lazily — building the index itself loads no classes.
-        textService.setClassMemberIndex(ClassMemberIndex.of(entries));
+        swapMemberIndex(ClassMemberIndex.of(entries));
+    }
+
+    private synchronized void swapMemberIndex(ClassMemberIndex next) {
+        ClassMemberIndex previous = this.classMemberIndex;
+        this.classMemberIndex = next;
+        textService.setClassMemberIndex(next);
+        if (previous != next) {
+            try {
+                previous.close();
+            } catch (Exception e) {
+                logger.log(Level.FINE, "Failed to close previous class member index", e);
+            }
+        }
     }
 
     void setClasspathEntriesForTest(Set<Path> entries) {
@@ -132,6 +148,11 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
     @Override
     public CompletableFuture<Object> shutdown() {
         shutdownReceived = true;
+        try {
+            classMemberIndex.close();
+        } catch (Exception e) {
+            logger.log(Level.FINE, "Failed to close class member index on shutdown", e);
+        }
         return CompletableFuture.completedFuture(null);
     }
 
