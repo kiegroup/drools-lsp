@@ -93,6 +93,21 @@ class DRLLintHelperTest {
     }
 
     @Test
+    void propertyAccessEndingInEndDoesNotCloseRule() {
+        // A consequence line ending with a field named 'end' (e.g. $booking.end)
+        // must not be mistaken for the closing 'end' keyword.
+        String text = "rule \"A\"\n"
+                + "  when\n"
+                + "    $b : Booking()\n"
+                + "  then\n"
+                + "    System.out.println($b.end);\n";
+        List<Diagnostic> diags = DRLLintHelper.lint(text);
+
+        assertThat(diags)
+                .anySatisfy(d -> assertThat(d.getMessage()).contains("end"));
+    }
+
+    @Test
     void wordsMerelyEndingInEndDoNotCloseRules() {
         String text = "rule \"A\"\n"
                 + "  when\n"

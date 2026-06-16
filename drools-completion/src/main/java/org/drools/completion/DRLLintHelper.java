@@ -56,7 +56,7 @@ public final class DRLLintHelper {
     private static final Pattern END_AT_START =
             Pattern.compile("^end\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern END_AT_END =
-            Pattern.compile("\\bend$", Pattern.CASE_INSENSITIVE);
+            Pattern.compile("(?:^|\\s)end$", Pattern.CASE_INSENSITIVE);
     private static final Pattern WHEN_KEYWORD =
             Pattern.compile("^\\s*when\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern THEN_KEYWORD =
@@ -348,7 +348,7 @@ public final class DRLLintHelper {
 
             // dialect "mvel" before the first rule applies to the whole file.
             if (!inRuleHeader && !inThen && MVEL_DIALECT.matcher(originalLine).find()) {
-                if (out.isEmpty() && !containsRuleBefore(lines, i)) {
+                if (!containsRuleBefore(lines, i)) {
                     fileMvel = true;
                 } else {
                     ruleMvel = true;
@@ -364,6 +364,9 @@ public final class DRLLintHelper {
             }
             if (inRuleHeader && MVEL_DIALECT.matcher(originalLine).find()) {
                 ruleMvel = true;
+            }
+            if (WHEN_KEYWORD.matcher(line).find()) {
+                inRuleHeader = false;
             }
             if (THEN_KEYWORD.matcher(line).find()) {
                 inRuleHeader = false;
@@ -389,7 +392,7 @@ public final class DRLLintHelper {
             int braceDelta = countChar(raw, '{') - countChar(raw, '}');
             boolean wasInsideBraces = braceDepth > 0;
             braceDepth = Math.max(0, braceDepth + braceDelta);
-            parenDepth += countChar(raw, '(') - countChar(raw, ')');
+            parenDepth = Math.max(0, parenDepth + countChar(raw, '(') - countChar(raw, ')'));
 
             // Inside a braced body (modify blocks, if/for bodies) the
             // heuristic stands down — modify uses commas legally, and
@@ -576,7 +579,8 @@ public final class DRLLintHelper {
         for (int[] rs : openRules) {
             String raw = lines[rs[0]];
             int startCol = rs[1];
-            int endCol = Math.min(raw.length(), startCol + 4);
+            int keywordLen = raw.trim().toLowerCase().startsWith("query") ? 5 : 4;
+            int endCol = Math.min(raw.length(), startCol + keywordLen);
             if (endCol <= startCol) {
                 endCol = Math.min(raw.length(), startCol + 1);
             }
