@@ -73,14 +73,24 @@ public class DRLCompletionHelper {
                 ? nodeIndex
                 : drlParser.getInputStream().size() - 1;
 
-        return getCompletionItems(drlParser, caretTokenIndex, compilationUnit, classIndex, prefix, memberIndex);
+        // Right after '(' the matched token is the paren itself, for which c3
+        // yields no candidates; look one token ahead for the constraint, but
+        // keep the paren's index to resolve the pattern type (its span ends at
+        // '(' until the closing ')' is typed).
+        int candidatesIndex = caretTokenIndex;
+        if (caretTokenIndex >= 0 && caretTokenIndex < drlParser.getInputStream().size() - 1
+                && drlParser.getInputStream().get(caretTokenIndex).getType() == DRL10Lexer.LPAREN) {
+            candidatesIndex = caretTokenIndex + 1;
+        }
+
+        return getCompletionItems(drlParser, candidatesIndex, caretTokenIndex, compilationUnit, classIndex, prefix, memberIndex);
     }
 
     static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex) {
-        return getCompletionItems(drlParser, nodeIndex, null, ClassIndex.empty(), "", ClassMemberIndex.empty());
+        return getCompletionItems(drlParser, nodeIndex, nodeIndex, null, ClassIndex.empty(), "", ClassMemberIndex.empty());
     }
 
-    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix, ClassMemberIndex memberIndex) {
+    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, int patternTokenIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix, ClassMemberIndex memberIndex) {
         CodeCompletionCore core = new CodeCompletionCore(drlParser, PREFERRED_RULES, Tokens.IGNORED);
         CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(nodeIndex, null);
 
@@ -100,7 +110,7 @@ public class DRLCompletionHelper {
         }
 
         if (compilationUnit != null && isConstraintPosition(candidates)) {
-            items.addAll(getFieldCompletionItems(compilationUnit, nodeIndex, classIndex, memberIndex));
+            items.addAll(getFieldCompletionItems(compilationUnit, patternTokenIndex, classIndex, memberIndex));
         }
 
         return items;

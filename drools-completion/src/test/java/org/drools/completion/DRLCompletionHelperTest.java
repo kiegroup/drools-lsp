@@ -101,11 +101,12 @@ class DRLCompletionHelperTest {
         result = DRLCompletionHelper.getCompletionItems(text, caretPosition, getLanguageClient());
         assertThat(completionItemStrings(result)).contains("exists", "not"); // inside LHS
 
-        // `    $dog : Dog(`
+        // `    $dog : Dog(` — caret right after the opening paren now offers
+        // constraint-expression completion instead of nothing.
         caretPosition.setLine(8);
         caretPosition.setCharacter(15);
         result = DRLCompletionHelper.getCompletionItems(text, caretPosition, getLanguageClient());
-        assertThat(result).isEmpty(); // no completion for identifier
+        assertThat(completionItemStrings(result)).contains("new", "boolean");
 
         // `  th`
         caretPosition.setLine(9);
@@ -265,6 +266,32 @@ class DRLCompletionHelperTest {
 
         ClassMemberIndex memberIndex = new ClassMemberIndex(getClass().getClassLoader());
         Position caretPosition = new Position(6, 9);
+        List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(
+                text, caretPosition, getLanguageClient(), ClassIndex.empty(), memberIndex);
+
+        List<String> fieldLabels = result.stream()
+                .filter(item -> item.getKind() == CompletionItemKind.Field)
+                .map(CompletionItem::getLabel)
+                .toList();
+        assertThat(fieldLabels).contains("name", "friendly", "legs");
+    }
+
+    @Test
+    void fieldCompletionWithCaretRightAfterOpeningParen() {
+        String text = """
+                package demo;
+
+                import org.drools.completion.fixtures.Pet;
+
+                rule R
+                  when
+                    Pet(
+                  then
+                end
+                """;
+
+        ClassMemberIndex memberIndex = new ClassMemberIndex(getClass().getClassLoader());
+        Position caretPosition = new Position(6, 8); // right after 'Pet('
         List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(
                 text, caretPosition, getLanguageClient(), ClassIndex.empty(), memberIndex);
 
