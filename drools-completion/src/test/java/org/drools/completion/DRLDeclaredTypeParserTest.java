@@ -2,11 +2,19 @@ package org.drools.completion;
 
 import java.util.List;
 
+import org.drools.drl.parser.antlr4.DRL10Parser;
+import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class DRLDeclaredTypeParserTest {
+
+    private static List<DeclaredType> parse(String drl) {
+        DRL10Parser parser = DRLParserHelper.createDrlParser(drl);
+        parser.removeErrorListeners(); // partial/malformed DRL is expected here
+        return DRLDeclaredTypeParser.extractFromCompilationUnit(parser.compilationUnit());
+    }
 
     @Test
     void parsesDeclaredTypeWithFields() {
@@ -15,7 +23,7 @@ class DRLDeclaredTypeParserTest {
                 + "  name : String\n"
                 + "  age : int\n"
                 + "end\n";
-        List<DeclaredType> types = DRLDeclaredTypeParser.parseDeclaredTypes(drl);
+        List<DeclaredType> types = parse(drl);
 
         assertThat(types).hasSize(1);
         DeclaredType person = types.get(0);
@@ -31,7 +39,7 @@ class DRLDeclaredTypeParserTest {
                 + "  LOW(1), HIGH(2);\n"
                 + "  level : int\n"
                 + "end\n";
-        List<DeclaredType> types = DRLDeclaredTypeParser.parseDeclaredTypes(drl);
+        List<DeclaredType> types = parse(drl);
 
         assertThat(types).hasSize(1);
         DeclaredType severity = types.get(0);
@@ -47,7 +55,7 @@ class DRLDeclaredTypeParserTest {
         String drl = "declare Employee extends Person\n"
                 + "  salary : double\n"
                 + "end\n";
-        List<DeclaredType> types = DRLDeclaredTypeParser.parseDeclaredTypes(drl);
+        List<DeclaredType> types = parse(drl);
 
         assertThat(types).hasSize(1);
         assertThat(types.get(0).extendsName).isEqualTo("Person");
@@ -62,14 +70,14 @@ class DRLDeclaredTypeParserTest {
                 + "  id : long\n"
                 + "end\n"
                 + "rule broken when Person( then\n";
-        List<DeclaredType> types = DRLDeclaredTypeParser.parseDeclaredTypes(drl);
+        List<DeclaredType> types = parse(drl);
 
         assertThat(types).extracting(t -> t.name).contains("Alpha");
     }
 
     @Test
     void nullAndEmptyTextYieldNoTypes() {
-        assertThat(DRLDeclaredTypeParser.parseDeclaredTypes(null)).isEmpty();
-        assertThat(DRLDeclaredTypeParser.parseDeclaredTypes("")).isEmpty();
+        assertThat(DRLDeclaredTypeParser.extractFromCompilationUnit(null)).isEmpty();
+        assertThat(parse("")).isEmpty();
     }
 }
