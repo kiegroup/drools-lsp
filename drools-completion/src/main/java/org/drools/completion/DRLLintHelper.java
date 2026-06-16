@@ -111,11 +111,11 @@ public final class DRLLintHelper {
     // ── unbalanced parentheses in the LHS ────────────────────────────────
 
     /**
-     * Reports unbalanced parentheses inside rule LHS (when-sections) and
-     * query bodies — the regions where multi-line patterns make a missing
-     * {@code )} both easy to type and hard to spot from the parser's
-     * far-away recovery error. An unclosed {@code (} is anchored at the
-     * paren itself; a stray {@code )} at its own position. Runs on
+     * Reports unbalanced parentheses inside rule LHS (when-sections), rule
+     * consequences (then-sections), and query bodies — the regions where a
+     * missing {@code )} is both easy to type and hard to spot from the
+     * parser's far-away recovery error. An unclosed {@code (} is anchored
+     * at the paren itself; a stray {@code )} at its own position. Runs on
      * sanitized text, so parens in strings and comments don't count.
      */
     private static List<Diagnostic> lintUnbalancedParens(String sanitized,
@@ -124,6 +124,7 @@ public final class DRLLintHelper {
         List<Diagnostic> out = new ArrayList<>();
         List<int[]> openParens = new ArrayList<>(); // {line, col}
         boolean inLhs = false;
+        boolean inThen = false;
 
         for (int i = 0; i < lines.length && out.size() < MAX_DIAGNOSTICS_PER_PASS; i++) {
             String raw = lines[i];
@@ -132,24 +133,32 @@ public final class DRLLintHelper {
             java.util.regex.Matcher ruleStart = RULE_KEYWORD.matcher(line);
             if (ruleStart.find()) {
                 // A new rule/query while parens are still open: flush what the
-                // previous LHS left unclosed, then track the new block (query
-                // bodies are pattern regions from the start; rules from `when`).
+                // previous section left unclosed, then track the new block
+                // (query bodies are pattern regions from the start; rules from `when`).
                 reportUnclosed(openParens, lines, out, severity);
                 inLhs = "query".equalsIgnoreCase(ruleStart.group(1));
+                inThen = false;
                 continue;
             }
             if (WHEN_KEYWORD.matcher(line).find()) {
                 inLhs = true;
+                inThen = false;
                 openParens.clear();
                 continue;
             }
-            if (inLhs && (THEN_KEYWORD.matcher(line).find()
-                    || END_AT_START.matcher(line).find())) {
+            if (inLhs && THEN_KEYWORD.matcher(line).find()) {
                 reportUnclosed(openParens, lines, out, severity);
                 inLhs = false;
+                inThen = true;
                 continue;
             }
-            if (!inLhs) {
+            if (END_AT_START.matcher(line).find() && (inLhs || inThen)) {
+                reportUnclosed(openParens, lines, out, severity);
+                inLhs = false;
+                inThen = false;
+                continue;
+            }
+            if (!inLhs && !inThen) {
                 continue;
             }
 

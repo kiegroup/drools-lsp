@@ -430,6 +430,41 @@ class DRLLintHelperTest {
     }
 
     @Test
+    void unclosedParenInConsequenceIsReported() {
+        // lintUnbalancedParens now covers the THEN section as well as the LHS.
+        String text = "rule \"A\"\n"
+                + "  when\n"
+                + "    $p : Person()\n"
+                + "  then\n"
+                + "    modify($p { setAge(5); }\n"
+                + "end\n";
+        List<Diagnostic> diags = DRLLintHelper.lint(text);
+
+        assertThat(diags)
+                .anySatisfy(d -> {
+                    assertThat(d.getSource()).isEqualTo("drools-lint");
+                    assertThat(d.getMessage()).contains("'('");
+                });
+    }
+
+    @Test
+    void strayClosingParenInConsequenceIsReported() {
+        String text = "rule \"A\"\n"
+                + "  when\n"
+                + "    $p : Person()\n"
+                + "  then\n"
+                + "    retract($p));\n"
+                + "end\n";
+        List<Diagnostic> diags = DRLLintHelper.lint(text);
+
+        assertThat(diags)
+                .anySatisfy(d -> {
+                    assertThat(d.getMessage()).contains("')'");
+                    assertThat(d.getRange().getStart().getLine()).isEqualTo(4);
+                });
+    }
+
+    @Test
     void unbalancedParensPassCanBeDisabled() {
         System.setProperty("drools.lsp.lint.unbalancedParens", "off");
         String text = "rule \"A\"\n"
