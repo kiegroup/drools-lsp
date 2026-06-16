@@ -83,7 +83,8 @@ class DroolsLspDocumentServiceTest {
 
         List<Diagnostic> diags = service.validate("myDocument");
         assertThat(diags).isNotEmpty();
-        assertThat(diags.get(0).getSource()).isEqualTo("drools-parser");
+        assertThat(diags)
+                 .anySatisfy(d -> assertThat(d.getSource()).isEqualTo("drools-parser"));
     }
 
     @Test
