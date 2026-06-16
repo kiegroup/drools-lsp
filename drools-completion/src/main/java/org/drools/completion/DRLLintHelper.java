@@ -124,7 +124,7 @@ public final class DRLLintHelper {
         List<Diagnostic> out = new ArrayList<>();
         List<int[]> openParens = new ArrayList<>(); // {line, col}
         boolean inLhs = false;
-        boolean inThen = false;
+        boolean inRhs = false;
 
         for (int i = 0; i < lines.length && out.size() < MAX_DIAGNOSTICS_PER_PASS; i++) {
             String raw = lines[i];
@@ -137,28 +137,28 @@ public final class DRLLintHelper {
                 // (query bodies are pattern regions from the start; rules from `when`).
                 reportUnclosed(openParens, lines, out, severity);
                 inLhs = "query".equalsIgnoreCase(ruleStart.group(1));
-                inThen = false;
+                inRhs = false;
                 continue;
             }
             if (WHEN_KEYWORD.matcher(line).find()) {
                 inLhs = true;
-                inThen = false;
+                inRhs = false;
                 openParens.clear();
                 continue;
             }
             if (inLhs && THEN_KEYWORD.matcher(line).find()) {
                 reportUnclosed(openParens, lines, out, severity);
                 inLhs = false;
-                inThen = true;
+                inRhs = true;
                 continue;
             }
-            if (END_AT_START.matcher(line).find() && (inLhs || inThen)) {
+            if (END_AT_START.matcher(line).find() && (inLhs || inRhs)) {
                 reportUnclosed(openParens, lines, out, severity);
                 inLhs = false;
-                inThen = false;
+                inRhs = false;
                 continue;
             }
-            if (!inLhs && !inThen) {
+            if (!inLhs && !inRhs) {
                 continue;
             }
 
@@ -208,21 +208,33 @@ public final class DRLLintHelper {
     // ── MVEL property access in constraints ──────────────────────────────
 
     /**
-     * A no-arg JavaBean accessor call with an instance receiver:
-     * {@code .getCode()} / {@code .isActive()}. group(1) is the accessor
-     * name without the leading dot.
+     * A no-arg JavaBean accessor call with an explicit instance receiver:
+     * {@code $p.getCode()} / {@code address.isActive()}. group(1) is the
+     * accessor name without the leading dot.
      */
     private static final Pattern ACCESSOR_CALL = Pattern.compile(
             "\\.(get[A-Z][A-Za-z0-9_]*|is[A-Z][A-Za-z0-9_]*)\\(\\s*\\)");
 
     /**
+     * A no-arg JavaBean accessor call with no explicit receiver — the bare
+     * form used inside constraint bodies: {@code getName()} in
+     * {@code Person(getName() == "John")}. The negative lookbehind excludes
+     * calls already matched by {@link #ACCESSOR_CALL} (preceded by {@code .})
+     * and calls that are part of a longer identifier (preceded by a word char).
+     * group(1) is the accessor name.
+     */
+    private static final Pattern BARE_ACCESSOR_CALL = Pattern.compile(
+            "(?<![.A-Za-z0-9_$])(get[A-Z][A-Za-z0-9_]*|is[A-Z][A-Za-z0-9_]*)\\(\\s*\\)");
+
+    /**
      * Flags JavaBean getter calls in LHS constraints and suggests the MVEL
-     * property-access form ({@code address.getCode()} → {@code address.code}),
-     * which is the canonical Drools constraint style. Scoped to the WHEN
-     * section only — the THEN consequence is real Java, where getter calls
-     * are correct and the property sugar is unavailable. Skips
-     * {@code getClass()} (its property form {@code .class} is a reserved
-     * MVEL construct) and {@code Type.getX()} static calls.
+     * property-access form. Covers both the bare form ({@code getName()} inside
+     * a pattern constraint) and the explicit-receiver form
+     * ({@code address.getCode()}). Scoped to the WHEN section only — the THEN
+     * consequence is real Java, where getter calls are correct and the property
+     * sugar is unavailable. Skips {@code getClass()} (its property form
+     * {@code .class} is a reserved MVEL construct) and {@code Type.getX()}
+     * static calls.
      */
     private static List<Diagnostic> lintMvelPropertyAccess(String sanitized,
                                                            DiagnosticSeverity severity) {
@@ -258,23 +270,38 @@ public final class DRLLintHelper {
                 if (receiverLooksLikeType(raw, m.start())) {
                     continue;
                 }
-                String property = decapitalize(
-                        accessor.startsWith("get") ? accessor.substring(3) : accessor.substring(2));
-                Diagnostic d = new Diagnostic();
-                d.setSeverity(severity);
-                d.setSource("drools-lint");
-                d.setCode("mvel-property-access");
-                d.setMessage("Prefer MVEL property access '" + property
-                        + "' over '" + accessor + "()' in constraints");
-                d.setRange(new Range(new Position(i, m.start(1)),
-                                     new Position(i, m.end())));
-                out.add(d);
+                out.add(accessorDiagnostic(i, m.start(1), m.end(), accessor, severity));
+                if (out.size() >= MAX_DIAGNOSTICS_PER_PASS) {
+                    return out;
+                }
+            }
+            java.util.regex.Matcher m2 = BARE_ACCESSOR_CALL.matcher(raw);
+            while (m2.find()) {
+                String accessor = m2.group(1);
+                if ("getClass".equals(accessor)) {
+                    continue;
+                }
+                out.add(accessorDiagnostic(i, m2.start(1), m2.end(), accessor, severity));
                 if (out.size() >= MAX_DIAGNOSTICS_PER_PASS) {
                     return out;
                 }
             }
         }
         return out;
+    }
+
+    private static Diagnostic accessorDiagnostic(int line, int startCol, int endCol,
+                                                  String accessor, DiagnosticSeverity severity) {
+        String property = decapitalize(
+                accessor.startsWith("get") ? accessor.substring(3) : accessor.substring(2));
+        Diagnostic d = new Diagnostic();
+        d.setSeverity(severity);
+        d.setSource("drools-lint");
+        d.setCode("mvel-property-access");
+        d.setMessage("Prefer MVEL property access '" + property
+                + "' over '" + accessor + "()' in constraints");
+        d.setRange(new Range(new Position(line, startCol), new Position(line, endCol)));
+        return d;
     }
 
     /**
@@ -344,7 +371,7 @@ public final class DRLLintHelper {
         List<Diagnostic> out = new ArrayList<>();
 
         boolean inRuleHeader = false;
-        boolean inThen = false;
+        boolean inRhs = false;
         boolean fileMvel = false;
         boolean ruleMvel = false;
         int parenDepth = 0;
@@ -356,7 +383,7 @@ public final class DRLLintHelper {
             String originalLine = i < originalLines.length ? originalLines[i] : "";
 
             // dialect "mvel" before the first rule applies to the whole file.
-            if (!inRuleHeader && !inThen && MVEL_DIALECT.matcher(originalLine).find()) {
+            if (!inRuleHeader && !inRhs && MVEL_DIALECT.matcher(originalLine).find()) {
                 if (!containsRuleBefore(lines, i)) {
                     fileMvel = true;
                 } else {
@@ -366,7 +393,7 @@ public final class DRLLintHelper {
 
             if (RULE_KEYWORD.matcher(line).find()) {
                 inRuleHeader = true;
-                inThen = false;
+                inRhs = false;
                 ruleMvel = false;
                 parenDepth = 0;
                 braceDepth = 0;
@@ -379,16 +406,16 @@ public final class DRLLintHelper {
             }
             if (THEN_KEYWORD.matcher(line).find()) {
                 inRuleHeader = false;
-                inThen = true;
+                inRhs = true;
                 parenDepth = 0;
                 braceDepth = 0;
                 continue;
             }
-            if (!inThen) {
+            if (!inRhs) {
                 continue;
             }
             if (END_AT_START.matcher(line).find()) {
-                inThen = false;
+                inRhs = false;
                 continue;
             }
             if (line.isEmpty()) {

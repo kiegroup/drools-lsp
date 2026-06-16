@@ -491,6 +491,22 @@ class DRLLintHelperTest {
     }
 
     @Test
+    void bareGetterCallInConstraintIsFlagged() {
+        // The most common DRL anti-pattern: getName() with no explicit receiver.
+        // The implicit receiver is the pattern fact, so the MVEL form is just 'name'.
+        System.setProperty("drools.lsp.lint.mvelPropertyAccess", "warning");
+        String text = "rule \"A\"\n"
+                + "  when\n"
+                + "    $p : Person( getName() == \"John\" )\n"
+                + "  then\n"
+                + "end\n";
+        List<Diagnostic> diags = DRLLintHelper.lint(text);
+
+        assertThat(diags).hasSize(1);
+        assertThat(diags.get(0).getMessage()).contains("'name'").contains("getName()");
+    }
+
+    @Test
     void getterCallInConstraintIsFlaggedWhenEnabled() {
         System.setProperty("drools.lsp.lint.mvelPropertyAccess", "hint");
         List<Diagnostic> diags = DRLLintHelper.lint(GETTER_IN_LHS);
