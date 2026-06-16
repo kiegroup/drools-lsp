@@ -7,6 +7,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import org.drools.completion.ClassIndex;
 import org.drools.completion.DRLCompletionHelper;
@@ -30,6 +32,8 @@ import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.services.TextDocumentService;
 
 public class DroolsLspDocumentService implements TextDocumentService {
+
+    private static final Logger logger = Logger.getLogger(DroolsLspDocumentService.class.getName());
 
     private final Map<String, String> sourcesMap = new ConcurrentHashMap<>();
     private volatile ClassIndex classIndex = ClassIndex.empty();
@@ -67,7 +71,11 @@ public class DroolsLspDocumentService implements TextDocumentService {
     List<Diagnostic> validate(String uri) {
         String text = sourcesMap.get(uri);
         List<Diagnostic> diagnostics = new ArrayList<>(DRLDiagnosticHelper.validate(text));
-        diagnostics.addAll(DRLLintHelper.lint(text));
+        try {
+            diagnostics.addAll(DRLLintHelper.lint(text));
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Lint pass failed for " + uri, e);
+        }
         return diagnostics;
     }
 
