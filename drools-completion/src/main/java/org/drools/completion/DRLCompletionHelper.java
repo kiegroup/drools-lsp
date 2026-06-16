@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.vmware.antlr4c3.CodeCompletionCore;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -46,6 +47,26 @@ public class DRLCompletionHelper {
             DRL10Parser.RULE_stringId,
             DRL10Parser.RULE_consequenceBody
     );
+
+    // The eight Java primitive-type keyword tokens. Mirrors the grammar's
+    // `primitiveType` rule (DRL10Expressions.g4), which shares DRL10Lexer's token
+    // vocab — so these ids match the ones c3 reports against DRL10Parser. ANTLR
+    // exposes no token-set constant for a rule, so the list is restated here.
+    private static final Set<Integer> PRIMITIVE_TYPE_TOKENS = Set.of(
+            DRL10Parser.BOOLEAN, DRL10Parser.CHAR, DRL10Parser.BYTE, DRL10Parser.SHORT,
+            DRL10Parser.INT, DRL10Parser.LONG, DRL10Parser.FLOAT, DRL10Parser.DOUBLE
+    );
+
+    // Inside a pattern constraint, c3 predicts the Java expression starters that
+    // can legally open a constraint: the primitive types above plus new/super and
+    // the big-decimal/-integer literal tokens. They are valid grammar but useless
+    // noise next to the field completions, so they are dropped in constraint
+    // position only — primitive types stay useful elsewhere (e.g. after `global`).
+    private static final Set<Integer> CONSTRAINT_KEYWORD_NOISE = Stream.concat(
+            PRIMITIVE_TYPE_TOKENS.stream(),
+            Stream.of(DRL10Parser.NEW, DRL10Parser.SUPER,
+                    DRL10Parser.DRL_BIG_DECIMAL_LITERAL, DRL10Parser.DRL_BIG_INTEGER_LITERAL)
+    ).collect(Collectors.toUnmodifiableSet());
 
     private DRLCompletionHelper() {
     }
@@ -99,7 +120,10 @@ public class DRLCompletionHelper {
             candidates.tokens.put(DRL10Lexer.DRL_RHS_END, List.of());
         }
 
+        boolean constraintPosition = compilationUnit != null && isConstraintPosition(candidates);
+
         List<CompletionItem> items = candidates.tokens.keySet().stream().filter(Objects::nonNull)
+                .filter(token -> !(constraintPosition && CONSTRAINT_KEYWORD_NOISE.contains(token)))
                 .map(integer -> drlParser.getVocabulary().getDisplayName(integer).replace("'", ""))
                 .map(String::toLowerCase)
                 .map(k -> createCompletionItem(k, CompletionItemKind.Keyword))
@@ -109,7 +133,7 @@ public class DRLCompletionHelper {
             items.addAll(getClassCompletionItems(compilationUnit, classIndex, prefix));
         }
 
-        if (compilationUnit != null && isConstraintPosition(candidates)) {
+        if (constraintPosition) {
             items.addAll(getFieldCompletionItems(compilationUnit, patternTokenIndex, classIndex, memberIndex));
         }
 

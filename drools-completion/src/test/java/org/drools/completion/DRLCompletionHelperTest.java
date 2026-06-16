@@ -101,12 +101,13 @@ class DRLCompletionHelperTest {
         result = DRLCompletionHelper.getCompletionItems(text, caretPosition, getLanguageClient());
         assertThat(completionItemStrings(result)).contains("exists", "not"); // inside LHS
 
-        // `    $dog : Dog(` — caret right after the opening paren now offers
-        // constraint-expression completion instead of nothing.
+        // `    $dog : Dog(` — constraint position. The expression-starter keyword
+        // noise is filtered out, and with no class/member index Dog's fields
+        // can't be resolved here, so nothing is offered.
         caretPosition.setLine(8);
         caretPosition.setCharacter(15);
         result = DRLCompletionHelper.getCompletionItems(text, caretPosition, getLanguageClient());
-        assertThat(completionItemStrings(result)).contains("new", "boolean");
+        assertThat(result).isEmpty();
 
         // `  th`
         caretPosition.setLine(9);
@@ -300,6 +301,37 @@ class DRLCompletionHelperTest {
                 .map(CompletionItem::getLabel)
                 .toList();
         assertThat(fieldLabels).contains("name", "friendly", "legs");
+    }
+
+    @Test
+    void constraintPositionOmitsPrimitiveKeywordNoise() {
+        // Inside a pattern's parens c3 also predicts Java expression starters
+        // (boolean/int/new/super/literal tokens). Those are dropped so only the
+        // field completions remain; primitive types stay available elsewhere.
+        String text = """
+                package test;
+
+                declare TestFact
+                    name: String
+                    type: String
+                end
+
+                rule R
+                when
+                    TestFact(  )
+                then
+                end
+                """;
+
+        Position caretPosition = new Position(9, 13); // between the parens of TestFact(  )
+        List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(
+                text, caretPosition, getLanguageClient());
+
+        List<String> labels = result.stream().map(CompletionItem::getLabel).toList();
+        assertThat(labels).contains("name", "type");
+        assertThat(labels).doesNotContain(
+                "boolean", "byte", "char", "short", "int", "long", "float", "double",
+                "new", "super", "drl_big_decimal_literal", "drl_big_integer_literal");
     }
 
     @Test
