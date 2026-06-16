@@ -275,6 +275,17 @@ class DRLCompletionHelperTest {
         assertThat(fieldLabels).contains("name", "friendly", "legs");
     }
 
+    @Test
+    void caretBeyondLastTokenDoesNotThrow() {
+        String text = "package demo;\n\nrule R\nwhen\nthen\nend\n";
+        Position caretPosition = new Position(6, 0);
+
+        List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(
+                text, caretPosition, getLanguageClient());
+
+        assertThat(result).isNotNull();
+    }
+
     private List<String> completionItemStrings(List<CompletionItem> result) {
         return result.stream().map(CompletionItem::getInsertText).toList();
     }

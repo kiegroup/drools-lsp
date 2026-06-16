@@ -68,7 +68,12 @@ public class DRLCompletionHelper {
         Integer nodeIndex = computeTokenIndex(drlParser, row, col);
         String prefix = extractPrefix(drlParser, nodeIndex);
 
-        return getCompletionItems(drlParser, nodeIndex, compilationUnit, classIndex, prefix, memberIndex);
+        // null when the caret is past the last token; fall back to EOF.
+        int caretTokenIndex = nodeIndex != null
+                ? nodeIndex
+                : drlParser.getInputStream().size() - 1;
+
+        return getCompletionItems(drlParser, caretTokenIndex, compilationUnit, classIndex, prefix, memberIndex);
     }
 
     static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex) {
