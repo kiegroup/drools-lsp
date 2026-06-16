@@ -132,6 +132,10 @@ public final class ClassMemberIndex {
             }
             raw = name.substring(3);
         } else if (name.startsWith("is") && name.length() > 2 && Character.isUpperCase(name.charAt(2))) {
+            Class<?> returnType = m.getReturnType();
+            if (returnType != boolean.class && returnType != Boolean.class) {
+                return null;
+            }
             raw = name.substring(2);
         } else {
             return null;

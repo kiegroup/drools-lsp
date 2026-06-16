@@ -19,6 +19,11 @@ public class Pet {
         return friendly;
     }
 
+    // 'is' prefix but non-boolean return — not a JavaBeans property.
+    public String isNamedAfter() {
+        return name;
+    }
+
     public String ignoredBecauseItTakesArgs(String arg) {
         return arg;
     }

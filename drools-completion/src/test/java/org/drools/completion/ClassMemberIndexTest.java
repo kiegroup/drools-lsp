@@ -19,7 +19,8 @@ class ClassMemberIndexTest {
         assertThat(members).extracting(f -> f.name)
                 .contains("name", "friendly", "legs");
         assertThat(members).extracting(f -> f.name)
-                .doesNotContain("class", "getClass", "ignoredBecauseItTakesArgs");
+                // namedAfter: isNamedAfter() returns String, not boolean — not a property.
+                .doesNotContain("class", "getClass", "ignoredBecauseItTakesArgs", "namedAfter");
         assertThat(members)
                 .anySatisfy(f -> {
                     assertThat(f.name).isEqualTo("name");
