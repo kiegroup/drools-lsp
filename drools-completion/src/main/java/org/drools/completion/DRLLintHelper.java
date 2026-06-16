@@ -9,6 +9,7 @@ import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.TextEdit;
 
 /**
  * Heuristic, parser-free lint passes for DRL source files, complementing the
@@ -226,34 +227,50 @@ public final class DRLLintHelper {
     private static final Pattern BARE_ACCESSOR_CALL = Pattern.compile(
             "(?<![.A-Za-z0-9_$])(get[A-Z][A-Za-z0-9_]*|is[A-Z][A-Za-z0-9_]*)\\(\\s*\\)");
 
+    /** A flagged getter call: line/col range, accessor name, and MVEL property name. */
+    static final class AccessorFinding {
+        final int line;
+        final int startCol;
+        final int endCol;
+        final String accessor;
+        final String property;
+
+        AccessorFinding(int line, int startCol, int endCol, String accessor, String property) {
+            this.line = line;
+            this.startCol = startCol;
+            this.endCol = endCol;
+            this.accessor = accessor;
+            this.property = property;
+        }
+    }
+
     /**
-     * Flags JavaBean getter calls in LHS constraints and suggests the MVEL
-     * property-access form. Covers both the bare form ({@code getName()} inside
-     * a pattern constraint) and the explicit-receiver form
-     * ({@code address.getCode()}). Scoped to the WHEN section only — the THEN
-     * consequence is real Java, where getter calls are correct and the property
-     * sugar is unavailable. Skips {@code getClass()} (its property form
-     * {@code .class} is a reserved MVEL construct) and {@code Type.getX()}
-     * static calls.
+     * Scans the WHEN sections of {@code sanitized} text for JavaBean getter
+     * calls eligible for MVEL property-access rewriting. Single source of
+     * truth for both the diagnostic pass ({@link #lintMvelPropertyAccess}) and
+     * the quick-fix edits ({@link #mvelPropertyAccessEdits}).
+     *
+     * <p>Covers both the explicit-receiver form ({@code $p.getCode()}) and the
+     * bare constraint form ({@code getName() == "x"}). Skips
+     * {@code getClass()} and {@code Type.getX()} static calls.
      */
-    private static List<Diagnostic> lintMvelPropertyAccess(String sanitized,
-                                                           DiagnosticSeverity severity) {
+    static List<AccessorFinding> findLhsAccessorFindings(String sanitized) {
         String[] lines = sanitized.split("\r?\n", -1);
-        List<Diagnostic> out = new ArrayList<>();
+        List<AccessorFinding> out = new ArrayList<>();
         boolean inWhen = false;
 
         for (int i = 0; i < lines.length; i++) {
             String raw = lines[i];
-            String line = raw.trim();
+            String trimmed = raw.trim();
 
-            if (RULE_KEYWORD.matcher(line).find()) {
+            if (RULE_KEYWORD.matcher(trimmed).find()) {
                 inWhen = false;
             }
-            if (WHEN_KEYWORD.matcher(line).find()) {
+            if (WHEN_KEYWORD.matcher(trimmed).find()) {
                 inWhen = true;
                 continue;
             }
-            if (inWhen && THEN_KEYWORD.matcher(line).find()) {
+            if (inWhen && THEN_KEYWORD.matcher(trimmed).find()) {
                 inWhen = false;
                 continue;
             }
@@ -270,7 +287,7 @@ public final class DRLLintHelper {
                 if (receiverLooksLikeType(raw, m.start())) {
                     continue;
                 }
-                out.add(accessorDiagnostic(i, m.start(1), m.end(), accessor, severity));
+                out.add(new AccessorFinding(i, m.start(1), m.end(), accessor, toProperty(accessor)));
                 if (out.size() >= MAX_DIAGNOSTICS_PER_PASS) {
                     return out;
                 }
@@ -281,7 +298,7 @@ public final class DRLLintHelper {
                 if ("getClass".equals(accessor)) {
                     continue;
                 }
-                out.add(accessorDiagnostic(i, m2.start(1), m2.end(), accessor, severity));
+                out.add(new AccessorFinding(i, m2.start(1), m2.end(), accessor, toProperty(accessor)));
                 if (out.size() >= MAX_DIAGNOSTICS_PER_PASS) {
                     return out;
                 }
@@ -290,18 +307,58 @@ public final class DRLLintHelper {
         return out;
     }
 
-    private static Diagnostic accessorDiagnostic(int line, int startCol, int endCol,
-                                                  String accessor, DiagnosticSeverity severity) {
-        String property = decapitalize(
-                accessor.startsWith("get") ? accessor.substring(3) : accessor.substring(2));
-        Diagnostic d = new Diagnostic();
-        d.setSeverity(severity);
-        d.setSource("drools-lint");
-        d.setCode("mvel-property-access");
-        d.setMessage("Prefer MVEL property access '" + property
-                + "' over '" + accessor + "()' in constraints");
-        d.setRange(new Range(new Position(line, startCol), new Position(line, endCol)));
-        return d;
+    /**
+     * Flags JavaBean getter calls in LHS constraints and suggests the MVEL
+     * property-access form. Covers both the bare form ({@code getName()} inside
+     * a pattern constraint) and the explicit-receiver form
+     * ({@code address.getCode()}). Scoped to the WHEN section only — the THEN
+     * consequence is real Java, where getter calls are correct and the property
+     * sugar is unavailable. Skips {@code getClass()} (its property form
+     * {@code .class} is a reserved MVEL construct) and {@code Type.getX()}
+     * static calls.
+     */
+    private static List<Diagnostic> lintMvelPropertyAccess(String sanitized,
+                                                           DiagnosticSeverity severity) {
+        List<Diagnostic> out = new ArrayList<>();
+        for (AccessorFinding f : findLhsAccessorFindings(sanitized)) {
+            Diagnostic d = new Diagnostic();
+            d.setSeverity(severity);
+            d.setSource("drools-lint");
+            d.setCode("mvel-property-access");
+            d.setMessage("Prefer MVEL property access '" + f.property
+                    + "' over '" + f.accessor + "()' in constraints");
+            d.setRange(new Range(new Position(f.line, f.startCol),
+                                 new Position(f.line, f.endCol)));
+            out.add(d);
+            if (out.size() >= MAX_DIAGNOSTICS_PER_PASS) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Returns the {@link TextEdit}s that rewrite every flagged LHS getter call
+     * to MVEL property access ({@code getCode()} → {@code code}). Drives the
+     * code-action quick-fix; uses the same detection as
+     * {@link #lintMvelPropertyAccess}.
+     */
+    public static List<TextEdit> mvelPropertyAccessEdits(String text) {
+        if (text == null || text.isEmpty()) {
+            return Collections.emptyList();
+        }
+        String sanitized = sanitize(text);
+        List<TextEdit> out = new ArrayList<>();
+        for (AccessorFinding f : findLhsAccessorFindings(sanitized)) {
+            out.add(new TextEdit(
+                    new Range(new Position(f.line, f.startCol), new Position(f.line, f.endCol)),
+                    f.property));
+        }
+        return out;
+    }
+
+    private static String toProperty(String accessor) {
+        return decapitalize(accessor.startsWith("get") ? accessor.substring(3) : accessor.substring(2));
     }
 
     /**

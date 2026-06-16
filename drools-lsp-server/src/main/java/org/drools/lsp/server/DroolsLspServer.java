@@ -106,6 +106,7 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         initializeResult.getCapabilities().setTextDocumentSync(TextDocumentSyncKind.Full);
         CompletionOptions completionOptions = new CompletionOptions();
         initializeResult.getCapabilities().setCompletionProvider(completionOptions);
+        initializeResult.getCapabilities().setCodeActionProvider(true);
 
         String rootUri = params.getRootUri();
         if (rootUri != null) {
