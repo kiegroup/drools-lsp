@@ -21,9 +21,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.vmware.antlr4c3.CodeCompletionCore;
+import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.Token;
+import org.antlr.v4.runtime.tree.ParseTree;
 import org.drools.drl.parser.antlr4.DRL10Lexer;
 import org.drools.drl.parser.antlr4.DRL10Parser;
 import org.eclipse.lsp4j.CompletionItem;
@@ -45,6 +48,26 @@ public class DRLCompletionHelper {
             DRL10Parser.RULE_consequenceBody
     );
 
+    // The eight Java primitive-type keyword tokens. Mirrors the grammar's
+    // `primitiveType` rule (DRL10Expressions.g4), which shares DRL10Lexer's token
+    // vocab — so these ids match the ones c3 reports against DRL10Parser. ANTLR
+    // exposes no token-set constant for a rule, so the list is restated here.
+    private static final Set<Integer> PRIMITIVE_TYPE_TOKENS = Set.of(
+            DRL10Parser.BOOLEAN, DRL10Parser.CHAR, DRL10Parser.BYTE, DRL10Parser.SHORT,
+            DRL10Parser.INT, DRL10Parser.LONG, DRL10Parser.FLOAT, DRL10Parser.DOUBLE
+    );
+
+    // Inside a pattern constraint, c3 predicts the Java expression starters that
+    // can legally open a constraint: the primitive types above plus new/super and
+    // the big-decimal/-integer literal tokens. They are valid grammar but useless
+    // noise next to the field completions, so they are dropped in constraint
+    // position only — primitive types stay useful elsewhere (e.g. after `global`).
+    private static final Set<Integer> CONSTRAINT_KEYWORD_NOISE = Stream.concat(
+            PRIMITIVE_TYPE_TOKENS.stream(),
+            Stream.of(DRL10Parser.NEW, DRL10Parser.SUPER,
+                    DRL10Parser.DRL_BIG_DECIMAL_LITERAL, DRL10Parser.DRL_BIG_INTEGER_LITERAL)
+    ).collect(Collectors.toUnmodifiableSet());
+
     private DRLCompletionHelper() {
     }
 
@@ -53,6 +76,10 @@ public class DRLCompletionHelper {
     }
 
     public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client, ClassIndex classIndex) {
+        return getCompletionItems(text, caretPosition, client, classIndex, ClassMemberIndex.empty());
+    }
+
+    public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client, ClassIndex classIndex, ClassMemberIndex memberIndex) {
         DRL10Parser drlParser = createDrlParser(text);
 
         int row = caretPosition == null ? -1 : caretPosition.getLine() + 1; // caret line position is zero based
@@ -62,14 +89,29 @@ public class DRLCompletionHelper {
         Integer nodeIndex = computeTokenIndex(drlParser, row, col);
         String prefix = extractPrefix(drlParser, nodeIndex);
 
-        return getCompletionItems(drlParser, nodeIndex, compilationUnit, classIndex, prefix);
+        // null when the caret is past the last token; fall back to EOF.
+        int caretTokenIndex = nodeIndex != null
+                ? nodeIndex
+                : drlParser.getInputStream().size() - 1;
+
+        // Right after '(' the matched token is the paren itself, for which c3
+        // yields no candidates; look one token ahead for the constraint, but
+        // keep the paren's index to resolve the pattern type (its span ends at
+        // '(' until the closing ')' is typed).
+        int candidatesIndex = caretTokenIndex;
+        if (caretTokenIndex >= 0 && caretTokenIndex < drlParser.getInputStream().size() - 1
+                && drlParser.getInputStream().get(caretTokenIndex).getType() == DRL10Lexer.LPAREN) {
+            candidatesIndex = caretTokenIndex + 1;
+        }
+
+        return getCompletionItems(drlParser, candidatesIndex, caretTokenIndex, compilationUnit, classIndex, prefix, memberIndex);
     }
 
     static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex) {
-        return getCompletionItems(drlParser, nodeIndex, null, ClassIndex.empty(), "");
+        return getCompletionItems(drlParser, nodeIndex, nodeIndex, null, ClassIndex.empty(), "", ClassMemberIndex.empty());
     }
 
-    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix) {
+    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, int patternTokenIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix, ClassMemberIndex memberIndex) {
         CodeCompletionCore core = new CodeCompletionCore(drlParser, PREFERRED_RULES, Tokens.IGNORED);
         CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(nodeIndex, null);
 
@@ -78,7 +120,10 @@ public class DRLCompletionHelper {
             candidates.tokens.put(DRL10Lexer.DRL_RHS_END, List.of());
         }
 
+        boolean constraintPosition = compilationUnit != null && isConstraintPosition(candidates);
+
         List<CompletionItem> items = candidates.tokens.keySet().stream().filter(Objects::nonNull)
+                .filter(token -> !(constraintPosition && CONSTRAINT_KEYWORD_NOISE.contains(token)))
                 .map(integer -> drlParser.getVocabulary().getDisplayName(integer).replace("'", ""))
                 .map(String::toLowerCase)
                 .map(k -> createCompletionItem(k, CompletionItemKind.Keyword))
@@ -88,7 +133,110 @@ public class DRLCompletionHelper {
             items.addAll(getClassCompletionItems(compilationUnit, classIndex, prefix));
         }
 
+        if (constraintPosition) {
+            items.addAll(getFieldCompletionItems(compilationUnit, patternTokenIndex, classIndex, memberIndex));
+        }
+
         return items;
+    }
+
+    private static boolean isConstraintPosition(CodeCompletionCore.CandidatesCollection candidates) {
+        List<Integer> path = candidates.rules.get(DRL10Parser.RULE_drlIdentifier);
+        return path != null && path.contains(DRL10Parser.RULE_constraint);
+    }
+
+    /**
+     * Completion items for the fields of the pattern enclosing the caret:
+     * fields of a DRL-declared type in the same document, or bean
+     * properties/fields of a classpath type resolved through imports and the
+     * class index.
+     */
+    private static List<CompletionItem> getFieldCompletionItems(DRL10Parser.CompilationUnitContext compilationUnit,
+                                                                int nodeIndex, ClassIndex classIndex,
+                                                                ClassMemberIndex memberIndex) {
+        String patternType = findEnclosingPatternTypeName(compilationUnit, nodeIndex);
+        if (patternType == null || patternType.isEmpty()) {
+            return List.of();
+        }
+        String simpleName = patternType.substring(patternType.lastIndexOf('.') + 1);
+
+        // DRL-declared types in the current document win over classpath types.
+        for (DeclaredType declared : DRLDeclaredTypeParser.extractFromCompilationUnit(compilationUnit)) {
+            if (simpleName.equals(declared.name)) {
+                return fieldItems(declared.fields);
+            }
+        }
+
+        String fqcn = resolveFqcn(patternType, simpleName, compilationUnit, classIndex);
+        if (fqcn == null) {
+            return List.of();
+        }
+        return fieldItems(memberIndex.membersOf(fqcn));
+    }
+
+    private static List<CompletionItem> fieldItems(List<Field> fields) {
+        List<CompletionItem> items = new ArrayList<>(fields.size());
+        for (Field field : fields) {
+            CompletionItem item = new CompletionItem();
+            item.setLabel(field.name);
+            item.setInsertText(field.name);
+            item.setDetail(field.type);
+            item.setKind(CompletionItemKind.Field);
+            items.add(item);
+        }
+        return items;
+    }
+
+    /**
+     * Resolves a pattern's type name to a fully qualified class name: an
+     * already-qualified name is used as-is, otherwise the imports and then
+     * the class index are consulted for the simple name.
+     */
+    private static String resolveFqcn(String patternType, String simpleName,
+                                      DRL10Parser.CompilationUnitContext compilationUnit,
+                                      ClassIndex classIndex) {
+        if (patternType.indexOf('.') >= 0) {
+            return patternType;
+        }
+        for (String imported : extractImports(compilationUnit)) {
+            if (imported.endsWith("." + simpleName)) {
+                return imported;
+            }
+        }
+        for (String fqcn : classIndex.getMatching(simpleName)) {
+            if (fqcn.endsWith("." + simpleName) || fqcn.equals(simpleName)) {
+                return fqcn;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns the type name of the deepest {@code lhsPattern} whose token
+     * span contains {@code tokenIndex}, or {@code null} when the caret is
+     * not inside a pattern.
+     */
+    private static String findEnclosingPatternTypeName(ParseTree node, int tokenIndex) {
+        if (!(node instanceof ParserRuleContext ctx)) {
+            return null;
+        }
+        Token start = ctx.getStart();
+        Token stop = ctx.getStop();
+        if (start == null || start.getTokenIndex() > tokenIndex
+                || (stop != null && stop.getTokenIndex() < tokenIndex)) {
+            return null;
+        }
+        String best = null;
+        if (ctx instanceof DRL10Parser.LhsPatternContext pattern && pattern.objectType != null) {
+            best = pattern.objectType.getText();
+        }
+        for (int i = 0; i < ctx.getChildCount(); i++) {
+            String deeper = findEnclosingPatternTypeName(ctx.getChild(i), tokenIndex);
+            if (deeper != null) {
+                best = deeper;
+            }
+        }
+        return best;
     }
 
     private static boolean isPatternPosition(CodeCompletionCore.CandidatesCollection candidates) {

@@ -101,11 +101,13 @@ class DRLCompletionHelperTest {
         result = DRLCompletionHelper.getCompletionItems(text, caretPosition, getLanguageClient());
         assertThat(completionItemStrings(result)).contains("exists", "not"); // inside LHS
 
-        // `    $dog : Dog(`
+        // `    $dog : Dog(` — constraint position. The expression-starter keyword
+        // noise is filtered out, and with no class/member index Dog's fields
+        // can't be resolved here, so nothing is offered.
         caretPosition.setLine(8);
         caretPosition.setCharacter(15);
         result = DRLCompletionHelper.getCompletionItems(text, caretPosition, getLanguageClient());
-        assertThat(result).isEmpty(); // no completion for identifier
+        assertThat(result).isEmpty();
 
         // `  th`
         caretPosition.setLine(9);
@@ -215,6 +217,132 @@ class DRLCompletionHelperTest {
                 });
             }
         }
+    }
+
+    @Test
+    void fieldCompletionFromDeclaredType() {
+        String text = """
+                package demo;
+
+                declare Person
+                  name : String
+                  age : int
+                end
+
+                rule R
+                  when
+                    Person(  )
+                  then
+                end
+                """;
+
+        // Inside the pattern's parens.
+        Position caretPosition = new Position(9, 12);
+        List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(
+                text, caretPosition, getLanguageClient(), ClassIndex.empty());
+
+        List<CompletionItem> fieldItems = result.stream()
+                .filter(item -> item.getKind() == CompletionItemKind.Field)
+                .toList();
+        assertThat(fieldItems).extracting(CompletionItem::getLabel)
+                .contains("name", "age");
+        CompletionItem nameItem = fieldItems.stream()
+                .filter(item -> item.getLabel().equals("name")).findFirst().orElseThrow();
+        assertThat(nameItem.getDetail()).isEqualTo("String");
+    }
+
+    @Test
+    void fieldCompletionFromClasspathTypeViaImport() {
+        String text = """
+                package demo;
+
+                import org.drools.completion.fixtures.Pet;
+
+                rule R
+                  when
+                    Pet(  )
+                  then
+                end
+                """;
+
+        ClassMemberIndex memberIndex = new ClassMemberIndex(getClass().getClassLoader());
+        Position caretPosition = new Position(6, 9);
+        List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(
+                text, caretPosition, getLanguageClient(), ClassIndex.empty(), memberIndex);
+
+        List<String> fieldLabels = result.stream()
+                .filter(item -> item.getKind() == CompletionItemKind.Field)
+                .map(CompletionItem::getLabel)
+                .toList();
+        assertThat(fieldLabels).contains("name", "friendly", "legs");
+    }
+
+    @Test
+    void fieldCompletionWithCaretRightAfterOpeningParen() {
+        String text = """
+                package demo;
+
+                import org.drools.completion.fixtures.Pet;
+
+                rule R
+                  when
+                    Pet(
+                  then
+                end
+                """;
+
+        ClassMemberIndex memberIndex = new ClassMemberIndex(getClass().getClassLoader());
+        Position caretPosition = new Position(6, 8); // right after 'Pet('
+        List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(
+                text, caretPosition, getLanguageClient(), ClassIndex.empty(), memberIndex);
+
+        List<String> fieldLabels = result.stream()
+                .filter(item -> item.getKind() == CompletionItemKind.Field)
+                .map(CompletionItem::getLabel)
+                .toList();
+        assertThat(fieldLabels).contains("name", "friendly", "legs");
+    }
+
+    @Test
+    void constraintPositionOmitsPrimitiveKeywordNoise() {
+        // Inside a pattern's parens c3 also predicts Java expression starters
+        // (boolean/int/new/super/literal tokens). Those are dropped so only the
+        // field completions remain; primitive types stay available elsewhere.
+        String text = """
+                package test;
+
+                declare TestFact
+                    name: String
+                    type: String
+                end
+
+                rule R
+                when
+                    TestFact(  )
+                then
+                end
+                """;
+
+        Position caretPosition = new Position(9, 13); // between the parens of TestFact(  )
+        List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(
+                text, caretPosition, getLanguageClient());
+
+        List<String> labels = result.stream().map(CompletionItem::getLabel).toList();
+        assertThat(labels).contains("name", "type");
+        assertThat(labels).doesNotContain(
+                "boolean", "byte", "char", "short", "int", "long", "float", "double",
+                "new", "super", "drl_big_decimal_literal", "drl_big_integer_literal");
+    }
+
+    @Test
+    void caretBeyondLastTokenDoesNotThrow() {
+        String text = "package demo;\n\nrule R\nwhen\nthen\nend\n";
+        Position caretPosition = new Position(6, 0);
+
+        List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(
+                text, caretPosition, getLanguageClient());
+
+        assertThat(result).isNotNull();
     }
 
     private List<String> completionItemStrings(List<CompletionItem> result) {

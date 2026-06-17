@@ -12,6 +12,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.drools.completion.ClassIndex;
+import org.drools.completion.ClassMemberIndex;
 import org.drools.completion.DRLCompletionHelper;
 import org.drools.completion.DRLDiagnosticHelper;
 import org.drools.completion.DRLLintHelper;
@@ -45,6 +46,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     private final Map<String, String> sourcesMap = new ConcurrentHashMap<>();
     private volatile ClassIndex classIndex = ClassIndex.empty();
+    private volatile ClassMemberIndex classMemberIndex = ClassMemberIndex.empty();
 
     private final DroolsLspServer server;
 
@@ -54,6 +56,10 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     public void setClassIndex(ClassIndex classIndex) {
         this.classIndex = classIndex;
+    }
+
+    public void setClassMemberIndex(ClassMemberIndex classMemberIndex) {
+        this.classMemberIndex = classMemberIndex;
     }
 
     ClassIndex getClassIndexForTest() {
@@ -128,7 +134,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
         String text = sourcesMap.get(completionParams.getTextDocument().getUri());
 
         Position caretPosition = completionParams.getPosition();
-        List<CompletionItem> completionItems = DRLCompletionHelper.getCompletionItems(text, caretPosition, server.getClient(), classIndex);
+        List<CompletionItem> completionItems = DRLCompletionHelper.getCompletionItems(text, caretPosition, server.getClient(), classIndex, classMemberIndex);
 
         server.getClient().showMessage(new MessageParams(MessageType.Info, "Position=" + caretPosition));
         server.getClient().showMessage(new MessageParams(MessageType.Info, "completionItems = " + completionItems));
