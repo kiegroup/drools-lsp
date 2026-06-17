@@ -21,6 +21,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -39,6 +41,8 @@ import static org.drools.drl.parser.antlr4.DRLParserHelper.computeTokenIndex;
 import static org.drools.drl.parser.antlr4.DRLParserHelper.createDrlParser;
 
 public class DRLCompletionHelper {
+
+    private static final Logger logger = Logger.getLogger(DRLCompletionHelper.class.getName());
 
     // PREFERRED_RULES is used to filter out the rules that consist of unwanted tokens
     // additionally, it can be used to customize getCompletionItems behavior
@@ -223,10 +227,21 @@ public class DRLCompletionHelper {
                 return imported;
             }
         }
+        // The import/qualified-name checks above are the disambiguators. Falling
+        // through to the class index means the name is unqualified, so an
+        // ambiguous simple name (two classpath classes, same simple name)
+        Set<String> matches = new HashSet<>();
         for (String fqcn : classIndex.getMatching(simpleName)) {
             if (fqcn.endsWith("." + simpleName) || fqcn.equals(simpleName)) {
-                return fqcn;
+                matches.add(fqcn);
             }
+        }
+        if (matches.size() == 1) {
+            return matches.iterator().next();
+        }
+        if (matches.size() > 1) {
+            logger.log(Level.FINE, () -> "Ambiguous simple name '" + simpleName
+                    + "' matches " + matches + "; skipping field completion");
         }
         return null;
     }
