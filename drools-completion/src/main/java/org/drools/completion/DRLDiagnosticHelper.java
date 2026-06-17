@@ -32,7 +32,7 @@ public final class DRLDiagnosticHelper {
      * empty, or syntactically clean input.
      */
     public static List<Diagnostic> validate(String text) {
-        if (text == null) {
+        if (text == null || text.isEmpty()) {
             return Collections.emptyList();
         }
         DRL10Parser parser = DRLParserHelper.createDrlParser(text);

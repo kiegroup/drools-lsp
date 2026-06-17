@@ -83,7 +83,20 @@ class DroolsLspDocumentServiceTest {
 
         List<Diagnostic> diags = service.validate("myDocument");
         assertThat(diags).isNotEmpty();
-        assertThat(diags.get(0).getSource()).isEqualTo("drools-parser");
+        assertThat(diags)
+                 .anySatisfy(d -> assertThat(d.getSource()).isEqualTo("drools-parser"));
+    }
+
+    @Test
+    void structuralLintComplementsSyntaxDiagnostics() {
+        // Missing 'end': the lint pass anchors a friendly warning at the rule
+        // header, alongside whatever the parser reports near EOF.
+        String drl = "rule \"A\"\n  when\n  then\n";
+        DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+        List<Diagnostic> diags = service.validate("myDocument");
+        assertThat(diags)
+                .anySatisfy(d -> assertThat(d.getSource()).isEqualTo("drools-lint"));
     }
 
     @Test
