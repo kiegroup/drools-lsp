@@ -26,18 +26,24 @@ import java.util.logging.Logger;
  * platform class loader, so the server's own classes never leak into user
  * completions. Results (including misses) are cached per FQCN.
  */
-public final class ClassMemberIndex {
+public final class ClassMemberIndex implements AutoCloseable {
 
     private static final Logger logger = Logger.getLogger(ClassMemberIndex.class.getName());
 
     private static final ClassMemberIndex EMPTY = new ClassMemberIndex((ClassLoader) null);
 
     private final ClassLoader loader;
+    private final boolean ownsLoader;
     private final Map<String, List<Field>> cache = new ConcurrentHashMap<>();
 
-    /** Visible for tests: reflect against an existing class loader. */
+    /** Visible for tests: reflect against an existing (externally-owned) loader. */
     ClassMemberIndex(ClassLoader loader) {
+        this(loader, false);
+    }
+
+    private ClassMemberIndex(ClassLoader loader, boolean ownsLoader) {
         this.loader = loader;
+        this.ownsLoader = ownsLoader;
     }
 
     /** An index that resolves nothing. */
@@ -60,7 +66,19 @@ public final class ClassMemberIndex {
         }
         URLClassLoader loader = new URLClassLoader(
                 urls.toArray(new URL[0]), ClassLoader.getPlatformClassLoader());
-        return new ClassMemberIndex(loader);
+        return new ClassMemberIndex(loader, true);
+    }
+
+    @Override
+    public void close() {
+        cache.clear();
+        if (ownsLoader && loader instanceof java.io.Closeable closeable) {
+            try {
+                closeable.close();
+            } catch (java.io.IOException e) {
+                logger.log(Level.FINE, "Failed to close class member index loader", e);
+            }
+        }
     }
 
     /**
@@ -132,6 +150,10 @@ public final class ClassMemberIndex {
             }
             raw = name.substring(3);
         } else if (name.startsWith("is") && name.length() > 2 && Character.isUpperCase(name.charAt(2))) {
+            Class<?> returnType = m.getReturnType();
+            if (returnType != boolean.class && returnType != Boolean.class) {
+                return null;
+            }
             raw = name.substring(2);
         } else {
             return null;

@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.vmware.antlr4c3.CodeCompletionCore;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -47,6 +48,26 @@ public class DRLCompletionHelper {
             DRL10Parser.RULE_stringId,
             DRL10Parser.RULE_consequenceBody
     );
+
+    // The eight Java primitive-type keyword tokens. Mirrors the grammar's
+    // `primitiveType` rule (DRL10Expressions.g4), which shares DRL10Lexer's token
+    // vocab — so these ids match the ones c3 reports against DRL10Parser. ANTLR
+    // exposes no token-set constant for a rule, so the list is restated here.
+    private static final Set<Integer> PRIMITIVE_TYPE_TOKENS = Set.of(
+            DRL10Parser.BOOLEAN, DRL10Parser.CHAR, DRL10Parser.BYTE, DRL10Parser.SHORT,
+            DRL10Parser.INT, DRL10Parser.LONG, DRL10Parser.FLOAT, DRL10Parser.DOUBLE
+    );
+
+    // Inside a pattern constraint, c3 predicts the Java expression starters that
+    // can legally open a constraint: the primitive types above plus new/super and
+    // the big-decimal/-integer literal tokens. They are valid grammar but useless
+    // noise next to the field completions, so they are dropped in constraint
+    // position only — primitive types stay useful elsewhere (e.g. after `global`).
+    private static final Set<Integer> CONSTRAINT_KEYWORD_NOISE = Stream.concat(
+            PRIMITIVE_TYPE_TOKENS.stream(),
+            Stream.of(DRL10Parser.NEW, DRL10Parser.SUPER,
+                    DRL10Parser.DRL_BIG_DECIMAL_LITERAL, DRL10Parser.DRL_BIG_INTEGER_LITERAL)
+    ).collect(Collectors.toUnmodifiableSet());
 
     private DRLCompletionHelper() {
     }
@@ -78,14 +99,29 @@ public class DRLCompletionHelper {
         Integer nodeIndex = computeTokenIndex(drlParser, row, col);
         String prefix = extractPrefix(drlParser, nodeIndex);
 
-        return getCompletionItems(drlParser, nodeIndex, compilationUnit, classIndex, prefix, memberIndex, documentPath);
+        // null when the caret is past the last token; fall back to EOF.
+        int caretTokenIndex = nodeIndex != null
+                ? nodeIndex
+                : drlParser.getInputStream().size() - 1;
+
+        // Right after '(' the matched token is the paren itself, for which c3
+        // yields no candidates; look one token ahead for the constraint, but
+        // keep the paren's index to resolve the pattern type (its span ends at
+        // '(' until the closing ')' is typed).
+        int candidatesIndex = caretTokenIndex;
+        if (caretTokenIndex >= 0 && caretTokenIndex < drlParser.getInputStream().size() - 1
+                && drlParser.getInputStream().get(caretTokenIndex).getType() == DRL10Lexer.LPAREN) {
+            candidatesIndex = caretTokenIndex + 1;
+        }
+
+        return getCompletionItems(drlParser, candidatesIndex, caretTokenIndex, compilationUnit, classIndex, prefix, memberIndex, documentPath);
     }
 
     static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex) {
-        return getCompletionItems(drlParser, nodeIndex, null, ClassIndex.empty(), "", ClassMemberIndex.empty(), null);
+        return getCompletionItems(drlParser, nodeIndex, nodeIndex, null, ClassIndex.empty(), "", ClassMemberIndex.empty(), null);
     }
 
-    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix, ClassMemberIndex memberIndex, Path documentPath) {
+    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, int patternTokenIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix, ClassMemberIndex memberIndex, Path documentPath) {
         CodeCompletionCore core = new CodeCompletionCore(drlParser, PREFERRED_RULES, Tokens.IGNORED);
         CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(nodeIndex, null);
 
@@ -94,7 +130,10 @@ public class DRLCompletionHelper {
             candidates.tokens.put(DRL10Lexer.DRL_RHS_END, List.of());
         }
 
+        boolean constraintPosition = compilationUnit != null && isConstraintPosition(candidates);
+
         List<CompletionItem> items = candidates.tokens.keySet().stream().filter(Objects::nonNull)
+                .filter(token -> !(constraintPosition && CONSTRAINT_KEYWORD_NOISE.contains(token)))
                 .map(integer -> drlParser.getVocabulary().getDisplayName(integer).replace("'", ""))
                 .map(String::toLowerCase)
                 .map(k -> createCompletionItem(k, CompletionItemKind.Keyword))
@@ -104,7 +143,7 @@ public class DRLCompletionHelper {
             items.addAll(getClassCompletionItems(compilationUnit, classIndex, prefix));
         }
 
-        if (compilationUnit != null && isConstraintPosition(candidates)) {
+        if (constraintPosition) {
             items.addAll(getFieldCompletionItems(compilationUnit, nodeIndex, classIndex, memberIndex, documentPath));
         }
 

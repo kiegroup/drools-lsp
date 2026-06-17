@@ -44,7 +44,42 @@
     ],
     "javaExtensions": [
       "./lib/drools-lsp-server-jar-with-dependencies.jar"
-    ]
+    ],
+    "configuration": {
+      "title": "DRL Language Server",
+      "properties": {
+        "drools.lsp.lint.missingEnd": {
+          "type": "string",
+          "default": "warning",
+          "enum": ["off", "hint", "info", "warning", "error"],
+          "description": "Severity for the missing 'end' keyword lint check."
+        },
+        "drools.lsp.lint.missingSeparator": {
+          "type": "string",
+          "default": "warning",
+          "enum": ["off", "hint", "info", "warning", "error"],
+          "description": "Severity for the missing constraint separator lint check (missing comma between constraints)."
+        },
+        "drools.lsp.lint.missingSemicolon": {
+          "type": "string",
+          "default": "warning",
+          "enum": ["off", "hint", "info", "warning", "error"],
+          "description": "Severity for the missing semicolon in consequence lint check."
+        },
+        "drools.lsp.lint.unbalancedParens": {
+          "type": "string",
+          "default": "warning",
+          "enum": ["off", "hint", "info", "warning", "error"],
+          "description": "Severity for the unbalanced parentheses lint check."
+        },
+        "drools.lsp.lint.mvelPropertyAccess": {
+          "type": "string",
+          "default": "off",
+          "enum": ["off", "hint", "info", "warning", "error"],
+          "description": "Severity for the MVEL property-access style hint (prefer 'name' over 'getName()' in LHS constraints)."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
