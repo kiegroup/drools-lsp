@@ -144,7 +144,7 @@ public class DRLCompletionHelper {
         }
 
         if (constraintPosition) {
-            items.addAll(getFieldCompletionItems(compilationUnit, nodeIndex, classIndex, memberIndex, documentPath));
+            items.addAll(getFieldCompletionItems(compilationUnit, patternTokenIndex, classIndex, memberIndex, documentPath));
         }
 
         return items;
@@ -163,9 +163,9 @@ public class DRLCompletionHelper {
      * class index.
      */
     private static List<CompletionItem> getFieldCompletionItems(DRL10Parser.CompilationUnitContext compilationUnit,
-                                                                int nodeIndex, ClassIndex classIndex,
+                                                                int patternTokenIndex, ClassIndex classIndex,
                                                                 ClassMemberIndex memberIndex, Path documentPath) {
-        String patternType = findEnclosingPatternTypeName(compilationUnit, nodeIndex);
+        String patternType = findEnclosingPatternTypeName(compilationUnit, patternTokenIndex);
         if (patternType == null || patternType.isEmpty()) {
             return List.of();
         }
