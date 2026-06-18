@@ -12,6 +12,7 @@ import java.util.logging.Logger;
 
 import org.drools.completion.ClassIndex;
 import org.drools.completion.ClassMemberIndex;
+import org.drools.completion.DRLDeclaredTypeParser;
 import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
@@ -67,6 +68,9 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
             textService.setClassIndex(ClassIndex.merge(jarClassIndex, outputIndex));
             // Fresh loader so recompiled classes aren't served from the old one's cache.
             swapMemberIndex(ClassMemberIndex.of(classpathEntries));
+            // Drop the declared-type parse cache so edited sibling files re-parse
+            // and the cache doesn't grow unbounded over the server's lifetime.
+            DRLDeclaredTypeParser.clearCache();
         } catch (Exception e) {
             logger.log(Level.WARNING, "Failed to rebuild class index", e);
         }
@@ -154,6 +158,7 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         } catch (Exception e) {
             logger.log(Level.FINE, "Failed to close class member index on shutdown", e);
         }
+        DRLDeclaredTypeParser.clearCache();
         return CompletableFuture.completedFuture(null);
     }
 

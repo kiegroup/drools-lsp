@@ -15,11 +15,14 @@
  */
 package org.drools.completion;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -38,6 +41,8 @@ import static org.drools.drl.parser.antlr4.DRLParserHelper.computeTokenIndex;
 import static org.drools.drl.parser.antlr4.DRLParserHelper.createDrlParser;
 
 public class DRLCompletionHelper {
+
+    private static final Logger logger = Logger.getLogger(DRLCompletionHelper.class.getName());
 
     // PREFERRED_RULES is used to filter out the rules that consist of unwanted tokens
     // additionally, it can be used to customize getCompletionItems behavior
@@ -80,6 +85,15 @@ public class DRLCompletionHelper {
     }
 
     public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client, ClassIndex classIndex, ClassMemberIndex memberIndex) {
+        return getCompletionItems(text, caretPosition, client, classIndex, memberIndex, null);
+    }
+
+    /**
+     * @param documentPath filesystem location of the document, used to find
+     *                     sibling DRL files; {@code null} for non-file
+     *                     documents (sibling declares are then unavailable)
+     */
+    public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client, ClassIndex classIndex, ClassMemberIndex memberIndex, Path documentPath) {
         DRL10Parser drlParser = createDrlParser(text);
 
         int row = caretPosition == null ? -1 : caretPosition.getLine() + 1; // caret line position is zero based
@@ -104,14 +118,14 @@ public class DRLCompletionHelper {
             candidatesIndex = caretTokenIndex + 1;
         }
 
-        return getCompletionItems(drlParser, candidatesIndex, caretTokenIndex, compilationUnit, classIndex, prefix, memberIndex);
+        return getCompletionItems(drlParser, candidatesIndex, caretTokenIndex, compilationUnit, classIndex, prefix, memberIndex, documentPath);
     }
 
     static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex) {
-        return getCompletionItems(drlParser, nodeIndex, nodeIndex, null, ClassIndex.empty(), "", ClassMemberIndex.empty());
+        return getCompletionItems(drlParser, nodeIndex, nodeIndex, null, ClassIndex.empty(), "", ClassMemberIndex.empty(), null);
     }
 
-    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, int patternTokenIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix, ClassMemberIndex memberIndex) {
+    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, int patternTokenIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix, ClassMemberIndex memberIndex, Path documentPath) {
         CodeCompletionCore core = new CodeCompletionCore(drlParser, PREFERRED_RULES, Tokens.IGNORED);
         CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(nodeIndex, null);
 
@@ -134,7 +148,7 @@ public class DRLCompletionHelper {
         }
 
         if (constraintPosition) {
-            items.addAll(getFieldCompletionItems(compilationUnit, patternTokenIndex, classIndex, memberIndex));
+            items.addAll(getFieldCompletionItems(compilationUnit, patternTokenIndex, classIndex, memberIndex, documentPath));
         }
 
         return items;
@@ -147,23 +161,33 @@ public class DRLCompletionHelper {
 
     /**
      * Completion items for the fields of the pattern enclosing the caret:
-     * fields of a DRL-declared type in the same document, or bean
+     * fields of a DRL-declared type (current document first, then sibling
+     * files from the active {@link WorkspaceSiblingResolver}), or bean
      * properties/fields of a classpath type resolved through imports and the
      * class index.
      */
     private static List<CompletionItem> getFieldCompletionItems(DRL10Parser.CompilationUnitContext compilationUnit,
-                                                                int nodeIndex, ClassIndex classIndex,
-                                                                ClassMemberIndex memberIndex) {
-        String patternType = findEnclosingPatternTypeName(compilationUnit, nodeIndex);
+                                                                int patternTokenIndex, ClassIndex classIndex,
+                                                                ClassMemberIndex memberIndex, Path documentPath) {
+        String patternType = findEnclosingPatternTypeName(compilationUnit, patternTokenIndex);
         if (patternType == null || patternType.isEmpty()) {
             return List.of();
         }
         String simpleName = patternType.substring(patternType.lastIndexOf('.') + 1);
 
-        // DRL-declared types in the current document win over classpath types.
+        // DRL-declared types win over classpath types.
         for (DeclaredType declared : DRLDeclaredTypeParser.extractFromCompilationUnit(compilationUnit)) {
             if (simpleName.equals(declared.name)) {
                 return fieldItems(declared.fields);
+            }
+        }
+        if (documentPath != null) {
+            for (Path sibling : WorkspaceSiblingResolvers.active().resolveSiblings(documentPath)) {
+                for (DeclaredType declared : DRLDeclaredTypeParser.parseDeclaredTypesCached(sibling)) {
+                    if (simpleName.equals(declared.name)) {
+                        return fieldItems(declared.fields);
+                    }
+                }
             }
         }
 
@@ -203,10 +227,21 @@ public class DRLCompletionHelper {
                 return imported;
             }
         }
+        // The import/qualified-name checks above are the disambiguators. Falling
+        // through to the class index means the name is unqualified, so an
+        // ambiguous simple name (two classpath classes, same simple name)
+        Set<String> matches = new HashSet<>();
         for (String fqcn : classIndex.getMatching(simpleName)) {
             if (fqcn.endsWith("." + simpleName) || fqcn.equals(simpleName)) {
-                return fqcn;
+                matches.add(fqcn);
             }
+        }
+        if (matches.size() == 1) {
+            return matches.iterator().next();
+        }
+        if (matches.size() > 1) {
+            logger.log(Level.FINE, () -> "Ambiguous simple name '" + simpleName
+                    + "' matches " + matches + "; skipping field completion");
         }
         return null;
     }

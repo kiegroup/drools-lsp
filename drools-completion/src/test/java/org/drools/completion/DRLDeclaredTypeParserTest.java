@@ -1,10 +1,13 @@
 package org.drools.completion;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import org.drools.drl.parser.antlr4.DRL10Parser;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -79,5 +82,30 @@ class DRLDeclaredTypeParserTest {
     void nullAndEmptyTextYieldNoTypes() {
         assertThat(DRLDeclaredTypeParser.extractFromCompilationUnit(null)).isEmpty();
         assertThat(parse("")).isEmpty();
+    }
+
+    @Test
+    void cachedFileParsingTracksModificationTime(@TempDir Path tmp) throws Exception {
+        Path file = tmp.resolve("Types.drl");
+        Files.writeString(file, "declare Alpha\n  id : long\nend\n");
+
+        List<DeclaredType> first = DRLDeclaredTypeParser.parseDeclaredTypesCached(file);
+        assertThat(first).extracting(t -> t.name).containsExactly("Alpha");
+
+        // Unchanged file: the cached list is served (same instance).
+        assertThat(DRLDeclaredTypeParser.parseDeclaredTypesCached(file)).isSameAs(first);
+
+        // Changed content with a new mtime is re-parsed.
+        Files.writeString(file, "declare Beta\n  id : long\nend\n");
+        Files.setLastModifiedTime(file, java.nio.file.attribute.FileTime.fromMillis(
+                Files.getLastModifiedTime(file).toMillis() + 5_000));
+        assertThat(DRLDeclaredTypeParser.parseDeclaredTypesCached(file))
+                .extracting(t -> t.name).containsExactly("Beta");
+    }
+
+    @Test
+    void cachedFileParsingHandlesMissingFiles(@TempDir Path tmp) {
+        assertThat(DRLDeclaredTypeParser.parseDeclaredTypesCached(tmp.resolve("missing.drl"))).isEmpty();
+        assertThat(DRLDeclaredTypeParser.parseDeclaredTypesCached(null)).isEmpty();
     }
 }

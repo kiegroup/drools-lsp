@@ -1,10 +1,20 @@
 package org.drools.completion;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
+import org.antlr.v4.runtime.BaseErrorListener;
+import org.antlr.v4.runtime.Lexer;
+import org.antlr.v4.runtime.RecognitionException;
+import org.antlr.v4.runtime.Recognizer;
 import org.drools.drl.parser.antlr4.DRL10Parser;
+import org.drools.drl.parser.antlr4.DRLParserHelper;
 
 /**
  * Extracts {@link DeclaredType}s ({@code declare} blocks, including declared
@@ -16,7 +26,88 @@ public final class DRLDeclaredTypeParser {
     private static final Logger logger =
             Logger.getLogger(DRLDeclaredTypeParser.class.getName());
 
+    /** Swallows ANTLR parse errors — partial/incomplete DRL is normal here. */
+    private static final BaseErrorListener SILENT = new BaseErrorListener() {
+        @Override
+        public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol,
+                                int line, int charPositionInLine, String msg,
+                                RecognitionException e) {
+        }
+    };
+
     private DRLDeclaredTypeParser() {
+    }
+
+    private static final class CachedEntry {
+        final long modMillis;
+        final List<DeclaredType> types;
+
+        CachedEntry(long modMillis, List<DeclaredType> types) {
+            this.modMillis = modMillis;
+            this.types = types;
+        }
+    }
+
+    /** Per-file cache keyed by normalized absolute path, valid by mtime. */
+    private static final Map<Path, CachedEntry> FILE_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * Drops all cached parse results. Entries are already mtime-validated, so
+     * this is about bounding memory in a long-running server rather than
+     * correctness; call it when the workspace classpath is rebuilt or on
+     * shutdown.
+     */
+    public static void clearCache() {
+        FILE_CACHE.clear();
+    }
+
+    /**
+     * Parses declared types from a file, serving a cached result while the
+     * file's modification time is unchanged. Missing/unreadable files yield
+     * an empty list.
+     */
+    public static List<DeclaredType> parseDeclaredTypesCached(Path file) {
+        if (file == null || !Files.isRegularFile(file)) {
+            return Collections.emptyList();
+        }
+        try {
+            Path key = file.toAbsolutePath().normalize();
+            long modMillis = Files.getLastModifiedTime(file).toMillis();
+            CachedEntry cached = FILE_CACHE.get(key);
+            if (cached != null && cached.modMillis == modMillis) {
+                return cached.types;
+            }
+            List<DeclaredType> types =
+                    Collections.unmodifiableList(parseDeclaredTypes(Files.readString(file)));
+            FILE_CACHE.put(key, new CachedEntry(modMillis, types));
+            return types;
+        } catch (Exception e) {
+            logger.fine(() -> "Failed to read/parse " + file + ": " + e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Parses all {@code declare} blocks in {@code text}. Parser errors are
+     * ignored so partial files still yield partial results.
+     */
+    private static List<DeclaredType> parseDeclaredTypes(String text) {
+        List<DeclaredType> types = new ArrayList<>();
+        if (text == null || text.isBlank()) {
+            return types;
+        }
+        try {
+            DRL10Parser parser = DRLParserHelper.createDrlParser(text);
+            Lexer lexer = (Lexer) parser.getTokenStream().getTokenSource();
+            lexer.removeErrorListeners();
+            lexer.addErrorListener(SILENT);
+            parser.removeErrorListeners();
+            parser.addErrorListener(SILENT);
+            return extractFromCompilationUnit(parser.compilationUnit());
+        } catch (Exception e) {
+            logger.fine(() -> "Failed to parse DRL for declared types: " + e.getMessage());
+        }
+        return types;
     }
 
     /**
