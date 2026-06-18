@@ -52,6 +52,16 @@ public final class DRLDeclaredTypeParser {
     private static final Map<Path, CachedEntry> FILE_CACHE = new ConcurrentHashMap<>();
 
     /**
+     * Drops all cached parse results. Entries are already mtime-validated, so
+     * this is about bounding memory in a long-running server rather than
+     * correctness; call it when the workspace classpath is rebuilt or on
+     * shutdown.
+     */
+    public static void clearCache() {
+        FILE_CACHE.clear();
+    }
+
+    /**
      * Parses declared types from a file, serving a cached result while the
      * file's modification time is unchanged. Missing/unreadable files yield
      * an empty list.
@@ -81,7 +91,7 @@ public final class DRLDeclaredTypeParser {
      * Parses all {@code declare} blocks in {@code text}. Parser errors are
      * ignored so partial files still yield partial results.
      */
-    public static List<DeclaredType> parseDeclaredTypes(String text) {
+    private static List<DeclaredType> parseDeclaredTypes(String text) {
         List<DeclaredType> types = new ArrayList<>();
         if (text == null || text.isBlank()) {
             return types;
