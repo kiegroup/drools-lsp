@@ -132,6 +132,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
         try {
             return supplier.get();
         } catch (Exception e) {
+            logger.log(Level.WARNING, "Error during completion/definition/code action", e);
             server.getClient().showMessage(new MessageParams(MessageType.Error, e.toString()));
         }
         return null;
@@ -144,8 +145,8 @@ public class DroolsLspDocumentService implements TextDocumentService {
         Position caretPosition = completionParams.getPosition();
         List<CompletionItem> completionItems = DRLCompletionHelper.getCompletionItems(text, caretPosition, server.getClient(), classIndex, classMemberIndex, toPath(uri));
 
-        server.getClient().showMessage(new MessageParams(MessageType.Info, "Position=" + caretPosition));
-        server.getClient().showMessage(new MessageParams(MessageType.Info, "completionItems = " + completionItems));
+        logger.fine( "Position=" + caretPosition);
+        logger.fine( "completionItems = " + completionItems);
 
         return completionItems;
     }
