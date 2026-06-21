@@ -69,6 +69,38 @@ class DRLHoverHelperTest {
     }
 
     @Test
+    void hoverDocLinkResolvesToDeclarationLink(@TempDir Path dir) throws Exception {
+        Path current = dir.resolve("rules.drl");
+        // "Address" is declared on line 2, so its link anchor is #L3.
+        String drl = """
+                package demo;
+
+                declare Address
+                  code : String
+                end
+
+                /** Lives at an {@link Address}. */
+                declare Person
+                  name : String
+                end
+
+                rule R
+                  when
+                    Person( )
+                  then
+                end
+                """;
+        Files.writeString(current, drl);
+
+        // Caret on "Person" in the pattern.
+        Hover hover = DRLHoverHelper.hover(drl, new Position(13, 6),
+                ClassIndex.empty(), ClassMemberIndex.empty(), current);
+
+        assertThat(content(hover))
+                .contains("[Address](" + current.toUri() + "#L3)");
+    }
+
+    @Test
     void hoverOnFieldShowsItsTypeAndOwner() {
         // Caret on "name" inside the constraint.
         Hover hover = DRLHoverHelper.hover(DECLARE_DRL, new Position(10, 13),
@@ -167,5 +199,47 @@ class DRLHoverHelperTest {
     void hoverOnNullTextReturnsNull() {
         assertThat(DRLHoverHelper.hover(null, new Position(0, 0),
                 ClassIndex.empty(), ClassMemberIndex.empty(), null)).isNull();
+    }
+
+    @Test
+    void hoverOnBoundVariableResolvesToItsType() {
+        String drl = """
+                package demo;
+
+                declare Person
+                  name : String
+                end
+
+                rule R
+                  when
+                    $p : Person( name == "x" )
+                  then
+                end
+                """;
+        // Caret on "$p".
+        Hover hover = DRLHoverHelper.hover(drl, new Position(8, 4),
+                ClassIndex.empty(), ClassMemberIndex.empty(), null);
+
+        String md = content(hover);
+        assertThat(md).contains("declare Person").contains("name : String");
+    }
+
+    @Test
+    void hoverOnJavaLangTypeResolvesWithoutImport() {
+        // java.lang.Object is implicitly available and has no bean getters, yet
+        // the FQN header should still render (the members-empty guard is gone).
+        String drl = """
+                package demo;
+
+                rule R
+                  when
+                    Object()
+                  then
+                end
+                """;
+        Hover hover = DRLHoverHelper.hover(drl, new Position(4, 4),
+                ClassIndex.empty(), ClassMemberIndex.empty(), null);
+
+        assertThat(content(hover)).contains("java.lang.Object");
     }
 }

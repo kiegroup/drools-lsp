@@ -105,7 +105,7 @@ public final class DRLDeclaredTypeParser {
             lexer.addErrorListener(SILENT);
             parser.removeErrorListeners();
             parser.addErrorListener(SILENT);
-            return attachDocComments(extractFromCompilationUnit(parser.compilationUnit()), text);
+            return extractFromCompilationUnit(parser.compilationUnit());
         } catch (Exception e) {
             logger.fine(() -> "Failed to parse DRL for declared types: " + e.getMessage());
         }
@@ -113,44 +113,20 @@ public final class DRLDeclaredTypeParser {
     }
 
     /**
-     * Finds a declared type by simple name: in the already-extracted types of
-     * the current document first, then in sibling files from the active
-     * {@link WorkspaceSiblingResolver}.
-     */
-    static DeclaredType findDeclaredType(String name, List<DeclaredType> currentDocTypes,
-                                         Path documentPath) {
-        for (DeclaredType dt : currentDocTypes) {
-            if (name.equals(dt.name)) {
-                return dt;
-            }
-        }
-        if (documentPath != null) {
-            for (Path sibling : WorkspaceSiblingResolvers.active().resolveSiblings(documentPath)) {
-                for (DeclaredType dt : parseDeclaredTypesCached(sibling)) {
-                    if (name.equals(dt.name)) {
-                        return dt;
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
      * Returns the type's own fields followed by the fields inherited through
-     * its {@code extends} chain (resolved across the current document and
-     * sibling files; cycle- and depth-guarded).
+     * its {@code extends} chain, resolving parents through {@code index} (a
+     * {@code name -> DeclaredType} map, typically from
+     * {@link DRLWorkspaceTypeIndex#build}). Cycle- and depth-guarded.
      */
     static List<Field> fieldsIncludingInherited(DeclaredType type,
-                                                List<DeclaredType> currentDocTypes,
-                                                Path documentPath) {
+                                                Map<String, DeclaredType> index) {
         List<Field> out = new ArrayList<>(type.fields);
         Set<String> seen = new HashSet<>();
         seen.add(type.name);
         String parentName = type.extendsName;
         int depth = 0;
         while (parentName != null && depth++ < 10 && seen.add(parentName)) {
-            DeclaredType parent = findDeclaredType(parentName, currentDocTypes, documentPath);
+            DeclaredType parent = index.get(parentName);
             if (parent == null) {
                 break;
             }
@@ -158,52 +134,6 @@ public final class DRLDeclaredTypeParser {
             parentName = parent.extendsName;
         }
         return out;
-    }
-
-    /**
-     * Attaches the cleaned {@code /** ... *}{@code /} comment found directly
-     * above each declare block. Anchored at the known declare positions, so
-     * doc-like text elsewhere (strings, consequences) can never be picked up.
-     */
-    private static List<DeclaredType> attachDocComments(List<DeclaredType> types, String text) {
-        if (types.isEmpty()) {
-            return types;
-        }
-        String[] lines = text.split("\r?\n", -1);
-        List<DeclaredType> out = new ArrayList<>(types.size());
-        for (DeclaredType dt : types) {
-            String doc = docCommentAbove(lines, dt.nameLine);
-            out.add(doc == null ? dt
-                    : new DeclaredType(dt.name, dt.fields, dt.isEnum,
-                                       dt.nameLine, dt.nameCol, dt.extendsName, doc));
-        }
-        return out;
-    }
-
-    private static String docCommentAbove(String[] lines, int declareLine) {
-        int last = declareLine - 1;
-        if (last < 0 || last >= lines.length || !lines[last].trim().endsWith("*/")) {
-            return null;
-        }
-        int first = last;
-        while (first >= 0 && !lines[first].trim().startsWith("/**")) {
-            first--;
-        }
-        if (first < 0) {
-            return null;
-        }
-        List<String> parts = new ArrayList<>();
-        for (int i = first; i <= last; i++) {
-            String s = lines[i].trim()
-                    .replaceFirst("^/\\*\\*", "")
-                    .replaceFirst("\\*/$", "")
-                    .replaceFirst("^\\*", "")
-                    .trim();
-            if (!s.isEmpty()) {
-                parts.add(s);
-            }
-        }
-        return parts.isEmpty() ? null : String.join("\n", parts);
     }
 
     /**

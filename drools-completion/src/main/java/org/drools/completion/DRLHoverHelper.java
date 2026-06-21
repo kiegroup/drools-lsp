@@ -2,7 +2,10 @@ package org.drools.completion;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.Lexer;
@@ -19,9 +22,9 @@ import org.eclipse.lsp4j.Position;
  * Hover content for DRL documents: type structure for pattern type names and
  * type information for fields inside constraints.
  *
- * <p>Type names resolve like completion and go-to-definition do — DRL
- * {@code declare} blocks first (current document, then sibling files from
- * the active {@link WorkspaceSiblingResolver}), then classpath types through
+ * <p>Type names resolve through {@link DRLWorkspaceTypeIndex} — the same
+ * layered view (current document, open unsaved siblings, on-disk siblings)
+ * that completion and go-to-definition use — then classpath types through
  * imports and the class index. Declared types render as their declare block
  * with the doc comment above it, classpath types as their member list.
  */
@@ -38,7 +41,20 @@ public final class DRLHoverHelper {
         }
     };
 
+    /** Matches a bound-variable declaration: {@code $var : TypeName(} or {@code $var : TypeName }. */
+    private static final Pattern BINDING_PATTERN =
+            Pattern.compile("(\\$\\w+)\\s*:\\s*([A-Z]\\w*)\\s*[(\\s]");
+
     private DRLHoverHelper() {
+    }
+
+    /**
+     * Equivalent to {@link #hover(String, Position, ClassIndex, ClassMemberIndex, Path, Map)}
+     * with no open sibling buffers — sibling declares resolve from disk only.
+     */
+    public static Hover hover(String text, Position position, ClassIndex classIndex,
+                              ClassMemberIndex memberIndex, Path documentPath) {
+        return hover(text, position, classIndex, memberIndex, documentPath, Map.of());
     }
 
     /**
@@ -48,9 +64,13 @@ public final class DRLHoverHelper {
      * @param documentPath filesystem location of the document, used to find
      *                     sibling DRL files; {@code null} for non-file
      *                     documents
+     * @param openFiles    open unsaved sibling buffers keyed by path, so
+     *                     cross-file resolution reflects unsaved edits; may be
+     *                     empty
      */
     public static Hover hover(String text, Position position, ClassIndex classIndex,
-                              ClassMemberIndex memberIndex, Path documentPath) {
+                              ClassMemberIndex memberIndex, Path documentPath,
+                              Map<Path, String> openFiles) {
         if (text == null || position == null) {
             return null;
         }
@@ -59,14 +79,14 @@ public final class DRLHoverHelper {
             return null;
         }
 
-        // 1. DRL-declared types: current document, then siblings.
         List<DeclaredType> currentDocTypes = DRLDeclaredTypeParser.parseDeclaredTypes(text);
-        DeclaredType declared =
-                DRLDeclaredTypeParser.findDeclaredType(word, currentDocTypes, documentPath);
+        Map<String, DeclaredType> typeIndex =
+                DRLWorkspaceTypeIndex.build(currentDocTypes, documentPath, openFiles);
+
+        // 1. The word is itself a DRL-declared type.
+        DeclaredType declared = typeIndex.get(word);
         if (declared != null) {
-            List<Field> allFields = DRLDeclaredTypeParser.fieldsIncludingInherited(
-                    declared, currentDocTypes, documentPath);
-            return markdown(renderDeclared(declared, allFields));
+            return markdown(renderDeclaredHover(declared, typeIndex, text, documentPath, openFiles));
         }
 
         DRL10Parser parser;
@@ -82,12 +102,29 @@ public final class DRLHoverHelper {
             return null;
         }
 
-        // 2. Field of the pattern enclosing the caret.
+        // 2. Bound variable: resolve $var to its pattern type, then hover that type.
+        if (word.startsWith("$")) {
+            String boundType = resolveBinding(word, text);
+            if (boundType != null) {
+                DeclaredType boundDeclared = typeIndex.get(boundType);
+                if (boundDeclared != null) {
+                    return markdown(renderDeclaredHover(
+                            boundDeclared, typeIndex, text, documentPath, openFiles));
+                }
+                String boundFqcn = DRLCompletionHelper.resolveFqcn(
+                        boundType, boundType, compilationUnit, classIndex);
+                if (boundFqcn != null) {
+                    return markdown(renderJavaType(boundType, boundFqcn, memberIndex.membersOf(boundFqcn)));
+                }
+            }
+        }
+
+        // 3. Field of the pattern enclosing the caret.
         if (nodeIndex != null) {
             String patternType = DRLCompletionHelper.findEnclosingPatternTypeName(
                     compilationUnit, nodeIndex);
             if (patternType != null && !patternType.equals(word)) {
-                Field field = findField(patternType, word, currentDocTypes, documentPath,
+                Field field = findField(patternType, word, typeIndex,
                                         compilationUnit, classIndex, memberIndex);
                 if (field != null) {
                     String owner = patternType.substring(patternType.lastIndexOf('.') + 1);
@@ -97,28 +134,53 @@ public final class DRLHoverHelper {
             }
         }
 
-        // 3. Classpath type.
+        // 4. Classpath type (or java.lang built-in). Show the hover even with no
+        //    members — knowing the FQN (e.g. java.lang.Object) is still useful.
         String fqcn = DRLCompletionHelper.resolveFqcn(word, word, compilationUnit, classIndex);
         if (fqcn != null) {
-            List<Field> members = memberIndex.membersOf(fqcn);
-            if (!members.isEmpty()) {
-                return markdown(renderJavaType(word, fqcn, members));
+            return markdown(renderJavaType(word, fqcn, memberIndex.membersOf(fqcn)));
+        }
+        return null;
+    }
+
+    /**
+     * Renders the full declared-type hover: doc comment (with {@code {@link}}
+     * references resolved to the declarations they name), the declare block,
+     * and inherited fields.
+     */
+    private static String renderDeclaredHover(DeclaredType declared,
+                                              Map<String, DeclaredType> typeIndex, String text,
+                                              Path documentPath, Map<Path, String> openFiles) {
+        List<Field> allFields = DRLDeclaredTypeParser.fieldsIncludingInherited(declared, typeIndex);
+        String doc = DRLWorkspaceTypeIndex.docFor(declared.name, text, documentPath, openFiles);
+        Map<String, String> linkTargets =
+                DRLWorkspaceTypeIndex.buildLinkTargets(text, documentPath, openFiles);
+        return renderDeclared(declared, allFields, doc, linkTargets);
+    }
+
+    /**
+     * Scans {@code text} for a binding declaration {@code $var : TypeName} and
+     * returns {@code TypeName} when {@code varName} matches, or {@code null}.
+     */
+    private static String resolveBinding(String varName, String text) {
+        Matcher m = BINDING_PATTERN.matcher(text);
+        while (m.find()) {
+            if (m.group(1).equals(varName)) {
+                return m.group(2);
             }
         }
         return null;
     }
 
     private static Field findField(String patternType, String fieldName,
-                                   List<DeclaredType> currentDocTypes,
-                                   Path documentPath, DRL10Parser.CompilationUnitContext compilationUnit,
+                                   Map<String, DeclaredType> typeIndex,
+                                   DRL10Parser.CompilationUnitContext compilationUnit,
                                    ClassIndex classIndex, ClassMemberIndex memberIndex) {
         String simpleName = patternType.substring(patternType.lastIndexOf('.') + 1);
-        DeclaredType declared =
-                DRLDeclaredTypeParser.findDeclaredType(simpleName, currentDocTypes, documentPath);
+        DeclaredType declared = typeIndex.get(simpleName);
         List<Field> fields;
         if (declared != null) {
-            fields = DRLDeclaredTypeParser.fieldsIncludingInherited(
-                    declared, currentDocTypes, documentPath);
+            fields = DRLDeclaredTypeParser.fieldsIncludingInherited(declared, typeIndex);
         } else {
             String fqcn = DRLCompletionHelper.resolveFqcn(patternType, simpleName,
                                                           compilationUnit, classIndex);
@@ -137,13 +199,16 @@ public final class DRLHoverHelper {
      *                  produced by
      *                  {@link DRLDeclaredTypeParser#fieldsIncludingInherited};
      *                  the inherited tail is rendered as a separate section
+     * @param doc         the type's doc comment from {@link DRLWorkspaceTypeIndex#docFor},
+     *                    rendered as a leading prose section; {@code null} when undocumented
+     * @param linkTargets {@code typeName -> href} for resolving {@code {@link}} references,
+     *                    from {@link DRLWorkspaceTypeIndex#buildLinkTargets}; may be empty
      */
-    private static String renderDeclared(DeclaredType dt, List<Field> allFields) {
+    private static String renderDeclared(DeclaredType dt, List<Field> allFields, String doc,
+                                         Map<String, String> linkTargets) {
         StringBuilder sb = new StringBuilder();
-        if (dt.doc != null) {
-            // No link-target index yet, so {@link} references render as
-            // their code/plain fallbacks.
-            sb.append(DRLDocFormatter.format(dt.doc, null)).append("\n\n");
+        if (doc != null) {
+            sb.append(DRLDocFormatter.format(doc, linkTargets)).append("\n\n");
         }
         sb.append("```\n");
         sb.append("declare ").append(dt.isEnum ? "enum " : "").append(dt.name);

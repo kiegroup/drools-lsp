@@ -167,4 +167,56 @@ class DroolsLspDocumentServiceTest {
                 .contains("declare Person")
                 .contains("name : String");
     }
+
+    @Test
+    void hoverShowsBoundVariableType() throws Exception {
+        String drl = """
+                package demo;
+
+                declare Person
+                  name : String
+                end
+
+                rule R
+                  when
+                    $p : Person( name == "x" )
+                  then
+                end
+                """;
+        DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+        // Caret on "$p" at line 8, character 4.
+        HoverParams params = new HoverParams(
+                new TextDocumentIdentifier("myDocument"), new Position(8, 4));
+        Hover hover = service.hover(params).get();
+
+        assertThat(hover).isNotNull();
+        assertThat(hover.getContents().getRight().getValue())
+                .contains("declare Person")
+                .contains("name : String");
+    }
+
+    @Test
+    void hoverShowsJavaLangTypeWithoutExplicitImport() throws Exception {
+        // java.lang.* is implicitly available in DRL — no import needed.
+        String drl = """
+                package demo;
+
+                rule R
+                  when
+                    Object()
+                  then
+                end
+                """;
+        DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+        // Caret on "Object" at line 4, character 4.
+        HoverParams params = new HoverParams(
+                new TextDocumentIdentifier("myDocument"), new Position(4, 4));
+        Hover hover = service.hover(params).get();
+
+        assertThat(hover).isNotNull();
+        assertThat(hover.getContents().getRight().getValue())
+                .contains("java.lang.Object");
+    }
 }

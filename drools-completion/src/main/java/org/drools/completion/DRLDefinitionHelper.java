@@ -3,6 +3,7 @@ package org.drools.completion;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -60,6 +61,17 @@ public final class DRLDefinitionHelper {
      */
     public static List<Location> findDefinitions(String uri, String text, Position position,
                                                  ClassIndex classIndex, Set<Path> buildOutputDirs) {
+        return findDefinitions(uri, text, position, classIndex, buildOutputDirs, Map.of());
+    }
+
+    /**
+     * @param openFiles open unsaved sibling buffers keyed by path, so a
+     *                  definition in an unsaved sibling resolves to its current
+     *                  (edited) location; may be empty
+     */
+    public static List<Location> findDefinitions(String uri, String text, Position position,
+                                                 ClassIndex classIndex, Set<Path> buildOutputDirs,
+                                                 Map<Path, String> openFiles) {
         if (text == null || position == null) {
             return List.of();
         }
@@ -75,17 +87,10 @@ public final class DRLDefinitionHelper {
             }
         }
 
-        // 2. declare blocks in sibling DRL files.
-        Path documentPath = toPath(uri);
-        if (documentPath != null) {
-            for (Path sibling : WorkspaceSiblingResolvers.active().resolveSiblings(documentPath)) {
-                for (DeclaredType declared : DRLDeclaredTypeParser.parseDeclaredTypesCached(sibling)) {
-                    if (word.equals(declared.name)) {
-                        return List.of(new Location(sibling.toUri().toString(),
-                                                    nameRange(declared, word)));
-                    }
-                }
-            }
+        // 2. declare blocks in sibling DRL files (open buffers shadow disk).
+        Location sibling = findSiblingDefinition(word, toPath(uri), openFiles);
+        if (sibling != null) {
+            return List.of(sibling);
         }
 
         // 3. Java sources by Maven convention.
@@ -95,6 +100,25 @@ public final class DRLDefinitionHelper {
         }
         Location javaSource = javaSourceLocation(fqcn, buildOutputDirs);
         return javaSource == null ? List.of() : List.of(javaSource);
+    }
+
+    /**
+     * Finds {@code word}'s declaration among sibling files via the shared
+     * {@link DRLWorkspaceTypeIndex} walk (open unsaved buffers shadow disk),
+     * returning its {@link Location} or {@code null}. First match wins.
+     */
+    private static Location findSiblingDefinition(String word, Path documentPath,
+                                                  Map<Path, String> openFiles) {
+        if (documentPath == null) {
+            return null;
+        }
+        Location[] hit = {null};
+        DRLWorkspaceTypeIndex.forEachSiblingType(documentPath, openFiles, (declared, fileUri) -> {
+            if (hit[0] == null && word.equals(declared.name)) {
+                hit[0] = new Location(fileUri, nameRange(declared, word));
+            }
+        });
+        return hit[0];
     }
 
     private static Range nameRange(DeclaredType declared, String word) {

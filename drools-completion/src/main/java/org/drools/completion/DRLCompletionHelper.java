@@ -19,6 +19,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.logging.Level;
@@ -94,6 +95,15 @@ public class DRLCompletionHelper {
      *                     documents (sibling declares are then unavailable)
      */
     public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client, ClassIndex classIndex, ClassMemberIndex memberIndex, Path documentPath) {
+        return getCompletionItems(text, caretPosition, client, classIndex, memberIndex, documentPath, Map.of());
+    }
+
+    /**
+     * @param openFiles open unsaved sibling buffers keyed by path, so field
+     *                  completion on sibling-declared types reflects unsaved
+     *                  edits; may be empty
+     */
+    public static List<CompletionItem> getCompletionItems(String text, Position caretPosition, LanguageClient client, ClassIndex classIndex, ClassMemberIndex memberIndex, Path documentPath, Map<Path, String> openFiles) {
         DRL10Parser drlParser = createDrlParser(text);
 
         int row = caretPosition == null ? -1 : caretPosition.getLine() + 1; // caret line position is zero based
@@ -118,14 +128,14 @@ public class DRLCompletionHelper {
             candidatesIndex = caretTokenIndex + 1;
         }
 
-        return getCompletionItems(drlParser, candidatesIndex, caretTokenIndex, compilationUnit, classIndex, prefix, memberIndex, documentPath);
+        return getCompletionItems(drlParser, candidatesIndex, caretTokenIndex, compilationUnit, classIndex, prefix, memberIndex, documentPath, openFiles);
     }
 
     static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex) {
-        return getCompletionItems(drlParser, nodeIndex, nodeIndex, null, ClassIndex.empty(), "", ClassMemberIndex.empty(), null);
+        return getCompletionItems(drlParser, nodeIndex, nodeIndex, null, ClassIndex.empty(), "", ClassMemberIndex.empty(), null, Map.of());
     }
 
-    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, int patternTokenIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix, ClassMemberIndex memberIndex, Path documentPath) {
+    static List<CompletionItem> getCompletionItems(DRL10Parser drlParser, int nodeIndex, int patternTokenIndex, DRL10Parser.CompilationUnitContext compilationUnit, ClassIndex classIndex, String prefix, ClassMemberIndex memberIndex, Path documentPath, Map<Path, String> openFiles) {
         CodeCompletionCore core = new CodeCompletionCore(drlParser, PREFERRED_RULES, Tokens.IGNORED);
         CodeCompletionCore.CandidatesCollection candidates = core.collectCandidates(nodeIndex, null);
 
@@ -148,7 +158,7 @@ public class DRLCompletionHelper {
         }
 
         if (constraintPosition) {
-            items.addAll(getFieldCompletionItems(compilationUnit, patternTokenIndex, classIndex, memberIndex, documentPath));
+            items.addAll(getFieldCompletionItems(compilationUnit, patternTokenIndex, classIndex, memberIndex, documentPath, openFiles));
         }
 
         return items;
@@ -168,7 +178,8 @@ public class DRLCompletionHelper {
      */
     private static List<CompletionItem> getFieldCompletionItems(DRL10Parser.CompilationUnitContext compilationUnit,
                                                                 int patternTokenIndex, ClassIndex classIndex,
-                                                                ClassMemberIndex memberIndex, Path documentPath) {
+                                                                ClassMemberIndex memberIndex, Path documentPath,
+                                                                Map<Path, String> openFiles) {
         String patternType = findEnclosingPatternTypeName(compilationUnit, patternTokenIndex);
         if (patternType == null || patternType.isEmpty()) {
             return List.of();
@@ -176,14 +187,15 @@ public class DRLCompletionHelper {
         String simpleName = patternType.substring(patternType.lastIndexOf('.') + 1);
 
         // DRL-declared types win over classpath types; fields include the
-        // ones inherited through the extends chain.
+        // ones inherited through the extends chain. Resolution goes through the
+        // shared workspace index so sibling (and open-buffer) declares resolve.
         List<DeclaredType> currentDocTypes =
                 DRLDeclaredTypeParser.extractFromCompilationUnit(compilationUnit);
-        DeclaredType declared =
-                DRLDeclaredTypeParser.findDeclaredType(simpleName, currentDocTypes, documentPath);
+        Map<String, DeclaredType> typeIndex =
+                DRLWorkspaceTypeIndex.build(currentDocTypes, documentPath, openFiles);
+        DeclaredType declared = typeIndex.get(simpleName);
         if (declared != null) {
-            return fieldItems(DRLDeclaredTypeParser.fieldsIncludingInherited(
-                    declared, currentDocTypes, documentPath));
+            return fieldItems(DRLDeclaredTypeParser.fieldsIncludingInherited(declared, typeIndex));
         }
 
         String fqcn = resolveFqcn(patternType, simpleName, compilationUnit, classIndex);
@@ -207,10 +219,19 @@ public class DRLCompletionHelper {
     }
 
     /**
-     * Resolves a pattern's type name to a fully qualified class name: an
-     * already-qualified name is used as-is, otherwise the imports and then
-     * the class index are consulted for the simple name. Shared with
-     * {@link DRLDefinitionHelper}.
+     * Resolves a pattern's type name to a fully qualified class name.
+     *
+     * <p>Resolution order:
+     * <ol>
+     *   <li>Already qualified — returned as-is.</li>
+     *   <li>Exact (non-wildcard) import match.</li>
+     *   <li>Wildcard import match verified through the class index.</li>
+     *   <li>Class index match for the simple name (skipped when ambiguous).</li>
+     *   <li>{@code java.lang.*} — implicitly available in DRL without an import,
+     *       resolved via the platform class loader.</li>
+     * </ol>
+     *
+     * Shared with {@link DRLDefinitionHelper}.
      */
     static String resolveFqcn(String patternType, String simpleName,
                               DRL10Parser.CompilationUnitContext compilationUnit,
@@ -218,14 +239,28 @@ public class DRLCompletionHelper {
         if (patternType.indexOf('.') >= 0) {
             return patternType;
         }
-        for (String imported : extractImports(compilationUnit)) {
+        Set<String> imports = extractImports(compilationUnit);
+        // 1. Exact import.
+        for (String imported : imports) {
             if (imported.endsWith("." + simpleName)) {
                 return imported;
             }
         }
-        // The import/qualified-name checks above are the disambiguators. Falling
-        // through to the class index means the name is unqualified, so an
-        // ambiguous simple name (two classpath classes, same simple name)
+        // 2. Wildcard import — verify the package actually provides the type via
+        //    the class index.
+        for (String imported : imports) {
+            if (imported.endsWith(".*")) {
+                String pkg = imported.substring(0, imported.length() - 1); // keep the dot
+                for (String fqcn : classIndex.getMatching(simpleName)) {
+                    if (fqcn.startsWith(pkg)
+                            && (fqcn.endsWith("." + simpleName) || fqcn.equals(simpleName))) {
+                        return fqcn;
+                    }
+                }
+            }
+        }
+        // 3. Class index (any package). An unqualified name with two classpath
+        //    classes sharing a simple name is ambiguous, so it is skipped.
         Set<String> matches = new HashSet<>();
         for (String fqcn : classIndex.getMatching(simpleName)) {
             if (fqcn.endsWith("." + simpleName) || fqcn.equals(simpleName)) {
@@ -238,6 +273,17 @@ public class DRLCompletionHelper {
         if (matches.size() > 1) {
             logger.log(Level.FINE, () -> "Ambiguous simple name '" + simpleName
                     + "' matches " + matches + "; skipping field completion");
+            return null;
+        }
+        // 4. java.lang.* — implicitly available in Drools without an import, just
+        //    as in Java source. Loadable via the platform class loader even when
+        //    absent from the project Maven classpath.
+        try {
+            String javaLangFqcn = "java.lang." + simpleName;
+            Class.forName(javaLangFqcn, false, ClassLoader.getPlatformClassLoader());
+            return javaLangFqcn;
+        } catch (ClassNotFoundException ignored) {
+            // Not a java.lang type.
         }
         return null;
     }
