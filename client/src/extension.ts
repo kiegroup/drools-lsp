@@ -13,21 +13,34 @@ import * as net from "net";
 
 let languageClient: LanguageClient | undefined;
 
+// Debug mode is selected by the LSDEBUG env var; it switches the server transport
+// to a socket (below) and enables log.debug output.
+const DEBUG_MODE = process.env.LSDEBUG === 'true';
+
+// Single output channel shared by the extension's own logging and the language
+// client's server/trace output, so everything lands in one "DRL Language Server" panel.
+let channel: vscode.OutputChannel | undefined;
+const log = {
+    info: (msg: string) => channel?.appendLine('INFO: ' + msg),
+    warn: (msg: string) => channel?.appendLine('WARNING: ' + msg),
+    error: (msg: string) => channel?.appendLine('ERROR: ' + msg),
+    debug: (msg: string) => { if (DEBUG_MODE) { channel?.appendLine('DEBUG: ' + msg); } },
+};
+
 export function activate(context: vscode.ExtensionContext) {
-    console.log('on activate, your extension "drl"....');
-    let serverOptions: ServerOptions  | undefined = undefined;
+    channel = vscode.window.createOutputChannel('DRL Language Server');
+    context.subscriptions.push(channel);
 
-    const DEBUG_MODE = process.env.LSDEBUG;
+    log.info('Activating extension "DRL Language Server"....');
+    let serverOptions: ServerOptions | undefined = undefined;
 
-    console.log('DEBUG_MODE ' + DEBUG_MODE);
-
-    if (DEBUG_MODE === 'true') {
-        console.log('Starting in debug mode');
+    if (DEBUG_MODE) {
+        log.debug('Starting in debug mode');
         let connectionInfo = {
             port: 9925,
             host: "127.0.0.1"
         };
-        console.log('connectionInfo ' + connectionInfo);
+        log.debug('connectionInfo ' + JSON.stringify(connectionInfo));
         serverOptions = () => {
             // Connect to language server via socket
             let socket = net.connect(connectionInfo);
@@ -36,11 +49,8 @@ export function activate(context: vscode.ExtensionContext) {
                 reader: socket
             };
             return Promise.resolve(result);
-
         };
     } else {
-        console.log('Starting without debug');
-
         const javaHome = getJavaHome();
 
         let executable: string = `java`;
@@ -48,19 +58,27 @@ export function activate(context: vscode.ExtensionContext) {
         if (javaHome) {
             // If java home is available, compose a path
             executable = path.join(javaHome, 'bin', 'java');
+            log.debug('java executable path : ' + executable);
         } else {
-            console.warn('java home is not found. Invoking java without path.');
+            log.warn('java home is not found. Invoking java without path.');
         }
 
         // path to the launcher.jar
         let serverJar = path.join(__dirname, "..", 'lib', 'drools-lsp-server-jar-with-dependencies.jar');
         if (fs.existsSync(serverJar)) {
-            console.log(`${serverJar} exists`);
+            log.debug('server jar path : ' + serverJar);
         } else {
-            console.error(`${serverJar} does not exist : The extension won't work`);
+            log.error(`${serverJar} not found`);
             return;
         }
+
+        const config = vscode.workspace.getConfiguration();
         const args: string[] = [];
+
+        const logLevel: string | undefined = config.get('drools.lsp.logLevel');
+        if (logLevel) {
+            args.push(`-Ddrools.lsp.logLevel=${logLevel}`);
+        }
 
         const lintProps = [
             'drools.lsp.lint.missingEnd',
@@ -69,7 +87,6 @@ export function activate(context: vscode.ExtensionContext) {
             'drools.lsp.lint.unbalancedParens',
             'drools.lsp.lint.mvelPropertyAccess',
         ];
-        const config = vscode.workspace.getConfiguration();
         for (const prop of lintProps) {
             const value: string | undefined = config.get(prop);
             if (value !== undefined) {
@@ -95,28 +112,29 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     if (serverOptions) {
-        console.log('serverOptions ' + serverOptions);
+        log.info('Starting language client');
         // Options to control the language client
         let clientOptions: LanguageClientOptions = {
             documentSelector: [{scheme: 'file', language: 'drools'}],
             synchronize: {
                 fileEvents: vscode.workspace.createFileSystemWatcher('**/target/classes/**/*.class')
-            }
+            },
+            outputChannel: channel
         };
         // Create and start the language client. In vscode-languageclient v8+,
         // start() returns a Promise<void> (not a Disposable); the client is torn
-        // down via stop() in deactivate().
+        // down via the subscriptions disposal on deactivate.
         languageClient = new LanguageClient('Drools', 'DRL Language Server', serverOptions, clientOptions);
         context.subscriptions.push(languageClient);  // client is Disposable in v8+; stops on deactivate
         languageClient.start();
 
-        console.log('Congratulations, your extension "drl" is now active!');
+        log.info('DRL Language Server activated.');
     }
 }
 
 // this method is called when your extension is deactivated
-export function deactivate() { 
-	console.log('Your extension "drl" is now deactivated!');
+export function deactivate() {
+    log.info('DRL Language Server deactivated.');
 }
 
 function getJavaHome() : string | undefined {
@@ -125,23 +143,23 @@ function getJavaHome() : string | undefined {
 
     javaHome = vscode.workspace.getConfiguration().get('java.home');
     if (javaHome) {
-        console.log('java.home from workspace configuration : ' + javaHome);
+        log.debug('java.home from workspace configuration : ' + javaHome);
         return javaHome;
     }
 
     // GHA_JAVA_HOME is to specify JAVA_HOME for Github Action (MacOS changes JAVA_HOME internally)
     javaHome = process.env.GHA_JAVA_HOME;
     if (javaHome) {
-        console.log('GHA_JAVA_HOME from process env : ' + javaHome);
+        log.debug('GHA_JAVA_HOME from process env : ' + javaHome);
         return javaHome;
     }
 
     javaHome = process.env.JAVA_HOME;
     if (javaHome) {
-        console.log('JAVA_HOME from process env : ' + javaHome);
+        log.debug('JAVA_HOME from process env : ' + javaHome);
         return javaHome;
     }
 
-    console.log('java home is not found');
+    log.warn('JAVA_HOME not found');
     return javaHome; // undefined
 }

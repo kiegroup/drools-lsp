@@ -48,6 +48,12 @@
     "configuration": {
       "title": "DRL Language Server",
       "properties": {
+        "drools.lsp.logLevel": {
+          "type": "string",
+          "default": "INFO",
+          "enum": ["SEVERE", "WARNING", "INFO", "FINE", "FINER", "FINEST"],
+          "description": "Server-side log level (java.util.logging). Use FINE or FINER to surface diagnostics when debugging."
+        },
         "drools.lsp.lint.missingEnd": {
           "type": "string",
           "default": "warning",
