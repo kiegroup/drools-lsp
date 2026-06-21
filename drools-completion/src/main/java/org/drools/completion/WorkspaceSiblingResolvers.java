@@ -6,6 +6,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Process-wide registry for the active {@link WorkspaceSiblingResolver}.
@@ -13,6 +15,8 @@ import java.util.List;
  * directory as the current document, in stable (sorted) order.
  */
 public final class WorkspaceSiblingResolvers {
+
+    private static final Logger logger = Logger.getLogger(WorkspaceSiblingResolvers.class.getName());
 
     private static final WorkspaceSiblingResolver SAME_DIRECTORY =
             WorkspaceSiblingResolvers::sameDirectorySiblings;
@@ -51,6 +55,7 @@ public final class WorkspaceSiblingResolvers {
                 }
             }
         } catch (Exception e) {
+            logger.log(Level.WARNING, "Failed to resolve sibling DRL files for " + currentFile, e);
             return Collections.emptyList();
         }
         siblings.sort(Path::compareTo);
