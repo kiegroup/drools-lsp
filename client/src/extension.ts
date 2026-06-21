@@ -102,6 +102,20 @@ export function activate(context: vscode.ExtensionContext) {
             args.push(`-Ddrools.lsp.inlayHints.enabled=${inlayHintsEnabled}`);
         }
 
+        // Custom Maven POM(s) for classpath resolution — a single path or a list,
+        // each absolute or workspace-relative. Joined with the OS path separator
+        // into one JVM arg; empty means pom.xml at the workspace root.
+        const pomPathSetting = config.get<string | string[]>('drools.lsp.maven.pomPath');
+        const pomPaths = (Array.isArray(pomPathSetting) ? pomPathSetting : (pomPathSetting ? [pomPathSetting] : []))
+            .map(p => p.trim())
+            .filter(p => p.length > 0);
+        if (pomPaths.length > 0) {
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const resolved = pomPaths.map(p =>
+                (workspaceRoot && !path.isAbsolute(p)) ? path.join(workspaceRoot, p) : p);
+            args.push(`-Ddrools.lsp.maven.pomPath=${resolved.join(path.delimiter)}`);
+        }
+
         args.push('-jar', serverJar);
 
         serverOptions = {
