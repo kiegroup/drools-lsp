@@ -8,7 +8,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 // Import the language client, language client options and server options from VSCode language client.
-import {LanguageClient, LanguageClientOptions, ServerOptions, StreamInfo} from 'vscode-languageclient';
+import {LanguageClient, LanguageClientOptions, ServerOptions, StreamInfo} from 'vscode-languageclient/node';
 import * as net from "net";
 
 export function activate(context: vscode.ExtensionContext) {
