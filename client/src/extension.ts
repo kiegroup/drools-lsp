@@ -58,7 +58,24 @@ export function activate(context: vscode.ExtensionContext) {
             console.error(`${serverJar} does not exist : The extension won't work`);
             return;
         }
-        const args: string[] = ['-jar', serverJar];
+        const args: string[] = [];
+
+        const lintProps = [
+            'drools.lsp.lint.missingEnd',
+            'drools.lsp.lint.missingSeparator',
+            'drools.lsp.lint.missingSemicolon',
+            'drools.lsp.lint.unbalancedParens',
+            'drools.lsp.lint.mvelPropertyAccess',
+        ];
+        const config = vscode.workspace.getConfiguration();
+        for (const prop of lintProps) {
+            const value: string | undefined = config.get(prop);
+            if (value !== undefined) {
+                args.push(`-D${prop}=${value}`);
+            }
+        }
+
+        args.push('-jar', serverJar);
 
         serverOptions = {
             command: executable,

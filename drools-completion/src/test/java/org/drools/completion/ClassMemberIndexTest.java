@@ -19,7 +19,8 @@ class ClassMemberIndexTest {
         assertThat(members).extracting(f -> f.name)
                 .contains("name", "friendly", "legs");
         assertThat(members).extracting(f -> f.name)
-                .doesNotContain("class", "getClass", "ignoredBecauseItTakesArgs");
+                // namedAfter: isNamedAfter() returns String, not boolean — not a property.
+                .doesNotContain("class", "getClass", "ignoredBecauseItTakesArgs", "namedAfter");
         assertThat(members)
                 .anySatisfy(f -> {
                     assertThat(f.name).isEqualTo("name");
@@ -57,5 +58,17 @@ class ClassMemberIndexTest {
     @Test
     void emptyIndexYieldsNoMembers() {
         assertThat(ClassMemberIndex.empty().membersOf("java.lang.String")).isEmpty();
+    }
+
+    @Test
+    void closingDoesNotCloseExternallyOwnedLoader() throws Exception {
+        ClassLoader borrowed = getClass().getClassLoader();
+        ClassMemberIndex borrowedIndex = new ClassMemberIndex(borrowed);
+
+        borrowedIndex.close();
+        borrowedIndex.close();
+
+        assertThat(borrowed.loadClass("java.lang.String")).isNotNull();
+        ClassMemberIndex.empty().close(); // must not throw
     }
 }
