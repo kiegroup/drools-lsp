@@ -21,6 +21,7 @@ import org.drools.completion.DRLCompletionHelper;
 import org.drools.completion.DRLDefinitionHelper;
 import org.drools.completion.DRLDiagnosticHelper;
 import org.drools.completion.DRLHoverHelper;
+import org.drools.completion.DRLInlayHintHelper;
 import org.drools.completion.DRLLintHelper;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.CodeAction;
@@ -41,6 +42,8 @@ import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DidSaveTextDocumentParams;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
+import org.eclipse.lsp4j.InlayHint;
+import org.eclipse.lsp4j.InlayHintParams;
 import org.eclipse.lsp4j.MessageParams;
 import org.eclipse.lsp4j.MessageType;
 import org.eclipse.lsp4j.Position;
@@ -207,6 +210,36 @@ public class DroolsLspDocumentService implements TextDocumentService {
                     text, params.getPosition(), classIndex, classMemberIndex, documentPath,
                     openSiblings(documentPath)));
         });
+    }
+
+    @Override
+    public CompletableFuture<List<InlayHint>> inlayHint(InlayHintParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (!inlayHintsEnabled() || params == null || params.getTextDocument() == null) {
+                return Collections.<InlayHint>emptyList();
+            }
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            if (text == null) {
+                return Collections.<InlayHint>emptyList();
+            }
+            Path documentPath = toPath(uri);
+            // getHints is best-effort and never throws (returns [] on failure).
+            return DRLInlayHintHelper.getHints(
+                    text, params.getRange(), documentPath, openSiblings(documentPath));
+        });
+    }
+
+    /**
+     * Whether DRL inlay hints are produced, from the
+     * {@code drools.lsp.inlayHints.enabled} system property (set via
+     * {@code -Ddrools.lsp.inlayHints.enabled} by the extension). Defaults to
+     * enabled; only an explicit {@code false} turns it off. VSCode's global
+     * {@code editor.inlayHints.enabled} gates display independently.
+     */
+    private static boolean inlayHintsEnabled() {
+        return !"false".equalsIgnoreCase(
+                System.getProperty("drools.lsp.inlayHints.enabled", "true").trim());
     }
 
     @Override

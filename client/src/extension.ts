@@ -11,6 +11,8 @@ import * as vscode from 'vscode';
 import {LanguageClient, LanguageClientOptions, ServerOptions, StreamInfo} from 'vscode-languageclient/node';
 import * as net from "net";
 
+let languageClient: LanguageClient | undefined;
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('on activate, your extension "drl"....');
     let serverOptions: ServerOptions  | undefined = undefined;
@@ -75,6 +77,14 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
 
+        // Inlay hints: boolean toggle, passed through so an explicit `false`
+        // reaches the server (it defaults to enabled). VSCode's global
+        // editor.inlayHints.enabled still gates display independently.
+        const inlayHintsEnabled: boolean | undefined = config.get('drools.lsp.inlayHints.enabled');
+        if (inlayHintsEnabled !== undefined) {
+            args.push(`-Ddrools.lsp.inlayHints.enabled=${inlayHintsEnabled}`);
+        }
+
         args.push('-jar', serverJar);
 
         serverOptions = {
@@ -93,12 +103,12 @@ export function activate(context: vscode.ExtensionContext) {
                 fileEvents: vscode.workspace.createFileSystemWatcher('**/target/classes/**/*.class')
             }
         };
-        // Create the language client and start the client.
-        let languageClient: LanguageClient = new LanguageClient('Drools', 'DRL Language Server', serverOptions, clientOptions);
-        let disposable = languageClient.start();
-
-        // Disposables to remove on deactivation.
-        context.subscriptions.push(disposable);
+        // Create and start the language client. In vscode-languageclient v8+,
+        // start() returns a Promise<void> (not a Disposable); the client is torn
+        // down via stop() in deactivate().
+        languageClient = new LanguageClient('Drools', 'DRL Language Server', serverOptions, clientOptions);
+        context.subscriptions.push(languageClient);  // client is Disposable in v8+; stops on deactivate
+        languageClient.start();
 
         console.log('Congratulations, your extension "drl" is now active!');
     }

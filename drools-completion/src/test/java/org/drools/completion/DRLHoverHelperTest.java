@@ -225,6 +225,37 @@ class DRLHoverHelperTest {
     }
 
     @Test
+    void hoverOnFieldBoundVariableResolvesViaBindingEngine() {
+        // $ref is bound to the `ref` field (type QuestionRef), not an explicit
+        // `$ref : QuestionRef(...)` pattern. The old regex couldn't resolve this;
+        // routing through LhsBindingResolver now shows QuestionRef's structure.
+        String drl = """
+                package demo;
+
+                declare QuestionRef
+                  order : int
+                end
+
+                declare LesionState
+                  ref : QuestionRef
+                end
+
+                rule R
+                  when
+                    LesionState( $ref : ref )
+                  then
+                    use($ref);
+                end
+                """;
+        // Caret on "$ref" in the RHS usage (line 14).
+        Hover hover = DRLHoverHelper.hover(drl, new Position(14, 9),
+                ClassIndex.empty(), ClassMemberIndex.empty(), null);
+
+        String md = content(hover);
+        assertThat(md).contains("declare QuestionRef").contains("order : int");
+    }
+
+    @Test
     void hoverOnJavaLangTypeResolvesWithoutImport() {
         // java.lang.Object is implicitly available and has no bean getters, yet
         // the FQN header should still render (the members-empty guard is gone).
