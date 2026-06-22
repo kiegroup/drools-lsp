@@ -20,6 +20,7 @@ import org.drools.completion.ClassMemberIndex;
 import org.drools.completion.DRLCompletionHelper;
 import org.drools.completion.DRLDefinitionHelper;
 import org.drools.completion.DRLDiagnosticHelper;
+import org.drools.completion.DRLDocumentSymbolHelper;
 import org.drools.completion.DRLHoverHelper;
 import org.drools.completion.DRLInlayHintHelper;
 import org.drools.completion.DRLLintHelper;
@@ -40,10 +41,13 @@ import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DidSaveTextDocumentParams;
+import org.eclipse.lsp4j.DocumentSymbol;
+import org.eclipse.lsp4j.DocumentSymbolParams;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.InlayHint;
 import org.eclipse.lsp4j.InlayHintParams;
+import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.MessageParams;
 import org.eclipse.lsp4j.MessageType;
 import org.eclipse.lsp4j.Position;
@@ -240,6 +244,23 @@ public class DroolsLspDocumentService implements TextDocumentService {
     private static boolean inlayHintsEnabled() {
         return !"false".equalsIgnoreCase(
                 System.getProperty("drools.lsp.inlayHints.enabled", "true").trim());
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")  // Either<SymbolInformation, …> is the lsp4j signature; we return the DocumentSymbol side.
+    public CompletableFuture<List<Either<SymbolInformation, DocumentSymbol>>> documentSymbol(DocumentSymbolParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<Either<SymbolInformation, DocumentSymbol>>emptyList();
+            }
+            String text = sourcesMap.get(params.getTextDocument().getUri());
+            List<DocumentSymbol> symbols = DRLDocumentSymbolHelper.symbols(text);
+            List<Either<SymbolInformation, DocumentSymbol>> result = new ArrayList<>(symbols.size());
+            for (DocumentSymbol symbol : symbols) {
+                result.add(Either.forRight(symbol));
+            }
+            return result;
+        });
     }
 
     @Override
