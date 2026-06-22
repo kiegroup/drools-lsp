@@ -18,6 +18,7 @@ import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.DiagnosticRegistrationOptions;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
+import org.eclipse.lsp4j.RenameOptions;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.SetTraceParams;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
@@ -148,6 +149,7 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         initializeResult.getCapabilities().setCompletionProvider(completionOptions);
         initializeResult.getCapabilities().setDefinitionProvider(true);
         initializeResult.getCapabilities().setReferencesProvider(true);
+        initializeResult.getCapabilities().setRenameProvider(new RenameOptions(true));
         initializeResult.getCapabilities().setHoverProvider(true);
         initializeResult.getCapabilities().setCodeActionProvider(true);
         initializeResult.getCapabilities().setInlayHintProvider(true);

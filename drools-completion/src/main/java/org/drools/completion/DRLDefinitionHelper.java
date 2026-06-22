@@ -152,6 +152,37 @@ public final class DRLDefinitionHelper {
         return start < end ? line.substring(start, end) : "";
     }
 
+    /**
+     * The range of the identifier ({@code [A-Za-z0-9_$]+}) around the caret, or
+     * {@code null} when the caret is not on one. Same expansion as
+     * {@link #wordAt}; used by rename to mark the editable span. Shared with
+     * {@link DRLRenameHelper}.
+     */
+    static Range wordRangeAt(String text, Position position) {
+        if (text == null || position == null) {
+            return null;
+        }
+        String[] lines = text.split("\r?\n", -1);
+        if (position.getLine() < 0 || position.getLine() >= lines.length) {
+            return null;
+        }
+        String line = lines[position.getLine()];
+        int col = Math.min(Math.max(position.getCharacter(), 0), line.length());
+
+        int start = col;
+        while (start > 0 && isIdentifierChar(line.charAt(start - 1))) {
+            start--;
+        }
+        int end = col;
+        while (end < line.length() && isIdentifierChar(line.charAt(end))) {
+            end++;
+        }
+        if (start >= end) {
+            return null;
+        }
+        return new Range(new Position(position.getLine(), start), new Position(position.getLine(), end));
+    }
+
     private static boolean isIdentifierChar(char c) {
         return Character.isLetterOrDigit(c) || c == '_' || c == '$';
     }
