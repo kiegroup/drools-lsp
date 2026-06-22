@@ -20,6 +20,7 @@ import org.drools.completion.ClassIndex;
 import org.drools.completion.ClassMemberIndex;
 import org.drools.completion.DRLCompletionHelper;
 import org.drools.completion.DRLDefinitionHelper;
+import org.drools.completion.DRLReferencesHelper;
 import org.drools.completion.DRLDiagnosticHelper;
 import org.drools.completion.DRLDocumentSymbolHelper;
 import org.drools.completion.DRLFoldingRangeHelper;
@@ -58,6 +59,7 @@ import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.MessageParams;
 import org.eclipse.lsp4j.MessageType;
 import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.ReferenceParams;
 import org.eclipse.lsp4j.RelatedFullDocumentDiagnosticReport;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextEdit;
@@ -350,6 +352,23 @@ public class DroolsLspDocumentService implements TextDocumentService {
                     uri, text, params.getPosition(), classIndex, server.getBuildOutputDirs(),
                     openSiblings(documentPath)));
             return Either.forLeft(definitions == null ? List.of() : definitions);
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<? extends Location>> references(ReferenceParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<Location>emptyList();
+            }
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            Path documentPath = toPath(uri);
+            boolean includeDeclaration =
+                    params.getContext() != null && params.getContext().isIncludeDeclaration();
+            return DRLReferencesHelper.references(uri, text, params.getPosition(),
+                    openSiblings(documentPath), classIndex, server.getBuildOutputDirs(),
+                    includeDeclaration);
         });
     }
 

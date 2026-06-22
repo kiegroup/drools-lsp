@@ -174,6 +174,48 @@ public final class DRLWorkspaceTypeIndex {
     }
 
     /**
+     * Visits each sibling {@code .drl} file reachable through the workspace
+     * layers — open unsaved buffers first (their editor text shadows disk),
+     * then on-disk siblings not shadowed by a buffer — passing the file's URI
+     * and its <em>current</em> text to {@code sink}. The current document is
+     * <em>not</em> included; callers scan that themselves. Used by
+     * find-references / rename, which need each sibling's raw text rather than
+     * its parsed declares.
+     */
+    static void forEachSiblingFile(Path documentPath, Map<Path, String> openFiles,
+                                   BiConsumer<String, String> sink) {
+        if (documentPath == null) {
+            return;
+        }
+        Path docNorm = documentPath.toAbsolutePath().normalize();
+        Path dir = docNorm.getParent();
+        Set<Path> shadowed = new HashSet<>();
+
+        // Layer 2: open unsaved siblings (same directory, not the current file).
+        if (openFiles != null) {
+            for (Map.Entry<Path, String> e : openFiles.entrySet()) {
+                Path p = normalizedSibling(e.getKey(), docNorm, dir);
+                if (p == null) {
+                    continue;
+                }
+                shadowed.add(p);
+                sink.accept(p.toUri().toString(), e.getValue());
+            }
+        }
+
+        // Layer 3: on-disk siblings not shadowed by an open buffer.
+        for (Path sibling : WorkspaceSiblingResolvers.active().resolveSiblings(documentPath)) {
+            if (shadowed.contains(sibling.toAbsolutePath().normalize())) {
+                continue;
+            }
+            String content = readFileSilently(sibling);
+            if (content != null) {
+                sink.accept(sibling.toUri().toString(), content);
+            }
+        }
+    }
+
+    /**
      * Returns the normalized form of {@code candidate} when it is a same-directory
      * sibling of {@code docNorm} (and not the document itself), else {@code null}.
      */
