@@ -21,6 +21,7 @@ import org.drools.completion.DRLCompletionHelper;
 import org.drools.completion.DRLDefinitionHelper;
 import org.drools.completion.DRLDiagnosticHelper;
 import org.drools.completion.DRLDocumentSymbolHelper;
+import org.drools.completion.DRLFoldingRangeHelper;
 import org.drools.completion.DRLHoverHelper;
 import org.drools.completion.DRLInlayHintHelper;
 import org.drools.completion.DRLLintHelper;
@@ -43,6 +44,8 @@ import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DidSaveTextDocumentParams;
 import org.eclipse.lsp4j.DocumentSymbol;
 import org.eclipse.lsp4j.DocumentSymbolParams;
+import org.eclipse.lsp4j.FoldingRange;
+import org.eclipse.lsp4j.FoldingRangeRequestParams;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.InlayHint;
@@ -260,6 +263,17 @@ public class DroolsLspDocumentService implements TextDocumentService {
                 result.add(Either.forRight(symbol));
             }
             return result;
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<FoldingRange>> foldingRange(FoldingRangeRequestParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<FoldingRange>emptyList();
+            }
+            String text = sourcesMap.get(params.getTextDocument().getUri());
+            return DRLFoldingRangeHelper.foldingRanges(text);
         });
     }
 
