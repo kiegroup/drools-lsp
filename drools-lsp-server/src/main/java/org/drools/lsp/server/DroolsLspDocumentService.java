@@ -5,6 +5,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +20,7 @@ import org.drools.completion.ClassMemberIndex;
 import org.drools.completion.DRLCompletionHelper;
 import org.drools.completion.DRLDefinitionHelper;
 import org.drools.completion.DRLDiagnosticHelper;
+import org.drools.completion.DRLHoverHelper;
 import org.drools.completion.DRLLintHelper;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.CodeAction;
@@ -37,6 +39,8 @@ import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DidSaveTextDocumentParams;
+import org.eclipse.lsp4j.Hover;
+import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.MessageParams;
 import org.eclipse.lsp4j.MessageType;
 import org.eclipse.lsp4j.Position;
@@ -143,7 +147,8 @@ public class DroolsLspDocumentService implements TextDocumentService {
         String text = sourcesMap.get(uri);
 
         Position caretPosition = completionParams.getPosition();
-        List<CompletionItem> completionItems = DRLCompletionHelper.getCompletionItems(text, caretPosition, server.getClient(), classIndex, classMemberIndex, toPath(uri));
+        Path documentPath = toPath(uri);
+        List<CompletionItem> completionItems = DRLCompletionHelper.getCompletionItems(text, caretPosition, server.getClient(), classIndex, classMemberIndex, documentPath, openSiblings(documentPath));
 
         logger.fine("Position=" + caretPosition);
         logger.fine("completionItems = " + completionItems);
@@ -160,13 +165,59 @@ public class DroolsLspDocumentService implements TextDocumentService {
         }
     }
 
+    /**
+     * Open, possibly unsaved, sibling {@code .drl} buffers (same directory as
+     * {@code documentPath}, excluding the document itself), keyed by normalized
+     * absolute path. Lets cross-file resolution reflect edits not yet saved to
+     * disk. Returns an empty map for non-file documents.
+     */
+    private Map<Path, String> openSiblings(Path documentPath) {
+        Map<Path, String> open = new HashMap<>();
+        if (documentPath == null) {
+            return open;
+        }
+        Path docNorm = documentPath.toAbsolutePath().normalize();
+        Path dir = docNorm.getParent();
+        if (dir == null) {
+            return open;
+        }
+        for (Map.Entry<String, String> e : sourcesMap.entrySet()) {
+            Path p = toPath(e.getKey());
+            if (p == null) {
+                continue;
+            }
+            Path np = p.toAbsolutePath().normalize();
+            if (np.equals(docNorm) || !np.toString().endsWith(".drl")) {
+                continue;
+            }
+            if (dir.equals(np.getParent())) {
+                open.put(np, e.getValue());
+            }
+        }
+        return open;
+    }
+
+    @Override
+    public CompletableFuture<Hover> hover(HoverParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            Path documentPath = toPath(uri);
+            return attempt(() -> DRLHoverHelper.hover(
+                    text, params.getPosition(), classIndex, classMemberIndex, documentPath,
+                    openSiblings(documentPath)));
+        });
+    }
+
     @Override
     public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>> definition(DefinitionParams params) {
         return CompletableFuture.supplyAsync(() -> {
             String uri = params.getTextDocument().getUri();
             String text = sourcesMap.get(uri);
+            Path documentPath = toPath(uri);
             List<Location> definitions = attempt(() -> DRLDefinitionHelper.findDefinitions(
-                    uri, text, params.getPosition(), classIndex, server.getBuildOutputDirs()));
+                    uri, text, params.getPosition(), classIndex, server.getBuildOutputDirs(),
+                    openSiblings(documentPath)));
             return Either.forLeft(definitions == null ? List.of() : definitions);
         });
     }

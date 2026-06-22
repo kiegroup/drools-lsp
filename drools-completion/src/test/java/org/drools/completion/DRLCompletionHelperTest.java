@@ -253,6 +253,37 @@ class DRLCompletionHelperTest {
     }
 
     @Test
+    void fieldCompletionIncludesInheritedDeclareFields() {
+        String text = """
+                package demo;
+
+                declare Person
+                  name : String
+                end
+
+                declare Employee extends Person
+                  salary : double
+                end
+
+                rule R
+                  when
+                    Employee(  )
+                  then
+                end
+                """;
+
+        Position caretPosition = new Position(12, 14);
+        List<CompletionItem> result = DRLCompletionHelper.getCompletionItems(
+                text, caretPosition, getLanguageClient(), ClassIndex.empty());
+
+        List<String> fieldLabels = result.stream()
+                .filter(item -> item.getKind() == CompletionItemKind.Field)
+                .map(CompletionItem::getLabel)
+                .toList();
+        assertThat(fieldLabels).contains("salary", "name");
+    }
+
+    @Test
     void fieldCompletionFromSiblingFileDeclare(@TempDir Path tmp) throws IOException {
         // The Person type is declared in a sibling .drl file in the same
         // directory as the current document.

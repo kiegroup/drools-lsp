@@ -4,8 +4,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
@@ -108,6 +110,30 @@ public final class DRLDeclaredTypeParser {
             logger.fine(() -> "Failed to parse DRL for declared types: " + e.getMessage());
         }
         return types;
+    }
+
+    /**
+     * Returns the type's own fields followed by the fields inherited through
+     * its {@code extends} chain, resolving parents through {@code index} (a
+     * {@code name -> DeclaredType} map, typically from
+     * {@link DRLWorkspaceTypeIndex#build}). Cycle- and depth-guarded.
+     */
+    static List<Field> fieldsIncludingInherited(DeclaredType type,
+                                                Map<String, DeclaredType> index) {
+        List<Field> out = new ArrayList<>(type.fields);
+        Set<String> seen = new HashSet<>();
+        seen.add(type.name);
+        String parentName = type.extendsName;
+        int depth = 0;
+        while (parentName != null && depth++ < 10 && seen.add(parentName)) {
+            DeclaredType parent = index.get(parentName);
+            if (parent == null) {
+                break;
+            }
+            out.addAll(parent.fields);
+            parentName = parent.extendsName;
+        }
+        return out;
     }
 
     /**
