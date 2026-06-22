@@ -15,6 +15,7 @@ import org.drools.completion.ClassIndex;
 import org.drools.completion.ClassMemberIndex;
 import org.drools.completion.DRLDeclaredTypeParser;
 import org.eclipse.lsp4j.CompletionOptions;
+import org.eclipse.lsp4j.DiagnosticRegistrationOptions;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
 import org.eclipse.lsp4j.ServerCapabilities;
@@ -151,6 +152,8 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         initializeResult.getCapabilities().setInlayHintProvider(true);
         initializeResult.getCapabilities().setDocumentSymbolProvider(true);
         initializeResult.getCapabilities().setFoldingRangeProvider(true);
+        initializeResult.getCapabilities().setDiagnosticProvider(
+                new DiagnosticRegistrationOptions(false, false));
 
         String rootUri = params.getRootUri();
         if (rootUri != null) {

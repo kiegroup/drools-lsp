@@ -5,6 +5,8 @@ import java.util.List;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DefinitionParams;
+import org.eclipse.lsp4j.DocumentDiagnosticParams;
+import org.eclipse.lsp4j.DocumentDiagnosticReport;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.InlayHint;
@@ -118,6 +120,19 @@ class DroolsLspDocumentServiceTest {
         assertThat(diags).isNotEmpty();
         assertThat(diags)
                  .anySatisfy(d -> assertThat(d.getSource()).isEqualTo("drools-parser"));
+    }
+
+    @Test
+    void pullDiagnosticReportsErrors() throws Exception {
+        String brokenDrl = "rule R when Person( then end";
+        DroolsLspDocumentService service = getDroolsLspDocumentService(brokenDrl);
+
+        DocumentDiagnosticReport report = service.diagnostic(
+                new DocumentDiagnosticParams(new TextDocumentIdentifier("myDocument"))).get();
+
+        assertThat(report.getRelatedFullDocumentDiagnosticReport().getItems())
+                .isNotEmpty()
+                .anySatisfy(d -> assertThat(d.getSource()).isEqualTo("drools-parser"));
     }
 
     @Test
