@@ -19,6 +19,7 @@ import java.util.logging.Logger;
 import org.drools.completion.ClassIndex;
 import org.drools.completion.ClassMemberIndex;
 import org.drools.completion.DRLCompletionHelper;
+import org.drools.completion.DRLCodeLensHelper;
 import org.drools.completion.DRLDefinitionHelper;
 import org.drools.completion.DRLReferencesHelper;
 import org.drools.completion.DRLRenameHelper;
@@ -33,6 +34,8 @@ import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.CodeAction;
 import org.eclipse.lsp4j.CodeActionKind;
 import org.eclipse.lsp4j.CodeActionParams;
+import org.eclipse.lsp4j.CodeLens;
+import org.eclipse.lsp4j.CodeLensParams;
 import org.eclipse.lsp4j.Command;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
@@ -375,6 +378,20 @@ public class DroolsLspDocumentService implements TextDocumentService {
             return DRLReferencesHelper.references(uri, text, params.getPosition(),
                     openSiblings(documentPath), classIndex, server.getBuildOutputDirs(),
                     includeDeclaration);
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<? extends CodeLens>> codeLens(CodeLensParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<CodeLens>emptyList();
+            }
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            Path documentPath = toPath(uri);
+            return DRLCodeLensHelper.codeLenses(uri, text, openSiblings(documentPath),
+                    classIndex, server.getBuildOutputDirs());
         });
     }
 

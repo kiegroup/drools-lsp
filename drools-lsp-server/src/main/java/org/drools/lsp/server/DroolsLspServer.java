@@ -14,6 +14,7 @@ import java.util.logging.Logger;
 import org.drools.completion.ClassIndex;
 import org.drools.completion.ClassMemberIndex;
 import org.drools.completion.DRLDeclaredTypeParser;
+import org.eclipse.lsp4j.CodeLensOptions;
 import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.DiagnosticRegistrationOptions;
 import org.eclipse.lsp4j.InitializeParams;
@@ -150,6 +151,7 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         initializeResult.getCapabilities().setDefinitionProvider(true);
         initializeResult.getCapabilities().setReferencesProvider(true);
         initializeResult.getCapabilities().setRenameProvider(new RenameOptions(true));
+        initializeResult.getCapabilities().setCodeLensProvider(new CodeLensOptions(false));
         initializeResult.getCapabilities().setHoverProvider(true);
         initializeResult.getCapabilities().setCodeActionProvider(true);
         initializeResult.getCapabilities().setInlayHintProvider(true);
