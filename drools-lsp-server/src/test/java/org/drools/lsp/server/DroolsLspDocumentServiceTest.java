@@ -16,6 +16,10 @@ import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
+import org.eclipse.lsp4j.TypeHierarchyItem;
+import org.eclipse.lsp4j.TypeHierarchyPrepareParams;
+import org.eclipse.lsp4j.TypeHierarchySubtypesParams;
+import org.eclipse.lsp4j.TypeHierarchySupertypesParams;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -281,5 +285,64 @@ class DroolsLspDocumentServiceTest {
                 System.setProperty("drools.lsp.inlayHints.enabled", previous);
             }
         }
+    }
+
+    private static final String TYPE_HIERARCHY_DRL = """
+            package demo;
+
+            declare Animal
+              legs : int
+            end
+
+            declare Dog extends Animal
+              good : boolean
+            end
+            """;
+
+    @Test
+    void prepareTypeHierarchyResolvesDeclare() throws Exception {
+        DroolsLspDocumentService service = getDroolsLspDocumentService(TYPE_HIERARCHY_DRL);
+
+        TypeHierarchyPrepareParams params = new TypeHierarchyPrepareParams();
+        params.setTextDocument(new TextDocumentIdentifier("myDocument"));
+        params.setPosition(new Position(6, 9)); // caret on "Dog"
+
+        List<TypeHierarchyItem> items = service.prepareTypeHierarchy(params).get();
+
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0).getName()).isEqualTo("Dog");
+        assertThat(items.get(0).getUri()).isEqualTo("myDocument");
+    }
+
+    @Test
+    void typeHierarchySupertypesResolvesDeclaredParent() throws Exception {
+        DroolsLspDocumentService service = getDroolsLspDocumentService(TYPE_HIERARCHY_DRL);
+
+        TypeHierarchyPrepareParams prepare = new TypeHierarchyPrepareParams();
+        prepare.setTextDocument(new TextDocumentIdentifier("myDocument"));
+        prepare.setPosition(new Position(6, 9)); // "Dog"
+        TypeHierarchyItem dog = service.prepareTypeHierarchy(prepare).get().get(0);
+
+        List<TypeHierarchyItem> supers =
+                service.typeHierarchySupertypes(new TypeHierarchySupertypesParams(dog)).get();
+
+        assertThat(supers).hasSize(1);
+        assertThat(supers.get(0).getName()).isEqualTo("Animal");
+    }
+
+    @Test
+    void typeHierarchySubtypesResolvesDeclaredChild() throws Exception {
+        DroolsLspDocumentService service = getDroolsLspDocumentService(TYPE_HIERARCHY_DRL);
+
+        TypeHierarchyPrepareParams prepare = new TypeHierarchyPrepareParams();
+        prepare.setTextDocument(new TextDocumentIdentifier("myDocument"));
+        prepare.setPosition(new Position(2, 9)); // "Animal"
+        TypeHierarchyItem animal = service.prepareTypeHierarchy(prepare).get().get(0);
+
+        List<TypeHierarchyItem> subs =
+                service.typeHierarchySubtypes(new TypeHierarchySubtypesParams(animal)).get();
+
+        assertThat(subs).hasSize(1);
+        assertThat(subs.get(0).getName()).isEqualTo("Dog");
     }
 }
