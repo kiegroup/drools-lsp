@@ -223,17 +223,6 @@ public class DroolsLspDocumentService implements TextDocumentService {
     }
 
     @Override
-    public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>> definition(DefinitionParams params) {
-        return CompletableFuture.supplyAsync(() -> {
-            String uri = params.getTextDocument().getUri();
-            String text = sourcesMap.get(uri);
-            List<Location> definitions = attempt(() -> DRLDefinitionHelper.findDefinitions(
-                    uri, text, params.getPosition(), classIndex, server.getBuildOutputDirs()));
-            return Either.forLeft(definitions == null ? List.of() : definitions);
-        });
-    }
-
-    @Override
     public CompletableFuture<List<Either<Command, CodeAction>>> codeAction(CodeActionParams params) {
         if (params == null || params.getTextDocument() == null || params.getRange() == null) {
             return CompletableFuture.completedFuture(Collections.emptyList());
