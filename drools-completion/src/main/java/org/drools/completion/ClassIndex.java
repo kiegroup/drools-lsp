@@ -56,6 +56,15 @@ public class ClassIndex {
         return getMatching("");
     }
 
+    /**
+     * The simple names of every indexed type (the index keys). Used as a typo
+     * suggestion pool for the unknown-type lint, so a misspelled classpath type
+     * can be matched to the real one.
+     */
+    public Set<String> simpleNames() {
+        return new java.util.HashSet<>(index.keySet());
+    }
+
     public List<String> getMatching(String prefix) {
         List<String> result = new ArrayList<>();
         for (Map.Entry<String, List<String>> entry : index.entrySet()) {

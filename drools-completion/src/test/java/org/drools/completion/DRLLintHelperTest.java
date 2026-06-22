@@ -1,6 +1,7 @@
 package org.drools.completion;
 
 import java.util.List;
+import java.util.Map;
 
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
@@ -17,6 +18,7 @@ class DRLLintHelperTest {
         System.clearProperty("drools.lsp.lint.missingSeparator");
         System.clearProperty("drools.lsp.lint.missingSemicolon");
         System.clearProperty("drools.lsp.lint.unbalancedParens");
+        System.clearProperty("drools.lsp.lint.unknownTypes");
         System.clearProperty("drools.lsp.lint.mvelPropertyAccess");
     }
 
@@ -571,5 +573,183 @@ class DRLLintHelperTest {
 
         assertThat(diags).hasSize(1);
         assertThat(diags.get(0).getMessage()).contains("'URL'");
+    }
+
+    // ── unknown types ────────────────────────────────────────────────────
+
+    // Member reflection over the test classpath (for qualified-reference checks);
+    // java.lang still resolves via the platform loader.
+    private final ClassMemberIndex members = new ClassMemberIndex(getClass().getClassLoader());
+
+    // Known types come from declares in the text; classpath/java.lang resolution
+    // runs against an empty class index, with the classpath treated as resolved
+    // (so non-declared unknowns are flagged).
+    private List<Diagnostic> lintUnknownTypes(String text) {
+        return DRLLintHelper.lintUnknownTypes(text, null, Map.of(), ClassIndex.empty(), members, true);
+    }
+
+    private static final String DECLARE_PERSON = "declare Person\n  name : String\nend\n";
+
+    @Test
+    void flagsUnknownPatternTypeWithTypoSuggestion() {
+        String text = DECLARE_PERSON + "rule R\n  when\n    Persn( age > 18 )\n  then\nend\n";
+        List<Diagnostic> diags = lintUnknownTypes(text);
+
+        assertThat(diags).hasSize(1);
+        Diagnostic d = diags.get(0);
+        assertThat(d.getSource()).isEqualTo("drools-type");
+        assertThat(d.getSeverity()).isEqualTo(DiagnosticSeverity.Warning);
+        assertThat(d.getMessage()).contains("Unknown type 'Persn'").contains("Did you mean 'Person'");
+        assertThat(d.getData()).isEqualTo("Person"); // drives the quick-fix
+        assertThat(d.getRange().getStart().getLine()).isEqualTo(5); // the pattern line
+        assertThat(d.getRange().getStart().getCharacter()).isEqualTo(4);
+    }
+
+    @Test
+    void knownDeclaredTypeIsNotFlagged() {
+        String text = DECLARE_PERSON + "rule R\n  when\n    Person( age > 18 )\n  then\nend\n";
+        assertThat(lintUnknownTypes(text)).isEmpty();
+    }
+
+    @Test
+    void flagsUnknownTypeInNewExpression() {
+        String text = DECLARE_PERSON + "rule R\n  when\n  then\n    insert(new Persn());\nend\n";
+        List<Diagnostic> diags = lintUnknownTypes(text);
+
+        assertThat(diags).hasSize(1);
+        assertThat(diags.get(0).getMessage()).contains("Persn").contains("Did you mean 'Person'");
+        assertThat(diags.get(0).getRange().getStart().getLine()).isEqualTo(6); // the new-expression line
+    }
+
+    @Test
+    void unknownTypeWithoutCloseMatchHasNoSuggestion() {
+        String text = DECLARE_PERSON + "rule R\n  when\n    Foobar( )\n  then\nend\n";
+        List<Diagnostic> diags = lintUnknownTypes(text);
+
+        assertThat(diags).hasSize(1);
+        assertThat(diags.get(0).getMessage()).contains("Unknown type 'Foobar'").doesNotContain("Did you mean");
+        assertThat(diags.get(0).getData()).isNull();
+    }
+
+    @Test
+    void importedTypeIsNotFlagged() {
+        // Resolved via the exact import, no declare and no classpath needed.
+        String text = "package demo;\nimport org.example.Account;\n"
+                + "rule R\n  when\n    Account( )\n  then\nend\n";
+        assertThat(lintUnknownTypes(text)).isEmpty();
+    }
+
+    @Test
+    void javaLangPatternTypeIsNotFlagged() {
+        // Object resolves via java.lang reflection through resolveFqcn — not flagged.
+        String text = "rule R\n  when\n    Object( )\n  then\nend\n";
+        assertThat(lintUnknownTypes(text)).isEmpty();
+    }
+
+    @Test
+    void ignoresTypeLikeTextInStringsAndComments() {
+        String text = DECLARE_PERSON
+                + "rule R\n  when\n    Person( name == \"Persn\" )\n  then\n"
+                + "    // Persn is a typo only in this comment\n    insert(new Person());\nend\n";
+        assertThat(lintUnknownTypes(text)).isEmpty();
+    }
+
+    @Test
+    void offSettingDisablesTheUnknownTypePass() {
+        System.setProperty("drools.lsp.lint.unknownTypes", "off");
+        String text = DECLARE_PERSON + "rule R\n  when\n    Persn( )\n  then\nend\n";
+        assertThat(lintUnknownTypes(text)).isEmpty();
+    }
+
+    // ── qualified references (Type.Member.x) ─────────────────────────────
+
+    // PetKind is a fixture enum with constants CAT, DOG.
+    private static final String IMPORT_PETKIND =
+            "package demo;\nimport org.drools.completion.fixtures.PetKind;\n";
+
+    @Test
+    void flagsUnknownMemberOfQualifiedReference() {
+        String text = IMPORT_PETKIND
+                + "declare Animal\n  legs : int\nend\n"
+                + "rule R\n  when\n    Animal( legs == PetKind.CATT )\n  then\nend\n";
+        List<Diagnostic> diags = lintUnknownTypes(text);
+
+        assertThat(diags).hasSize(1);
+        Diagnostic d = diags.get(0);
+        assertThat(d.getSource()).isEqualTo("drools-type");
+        assertThat(d.getMessage())
+                .contains("'CATT' is not a member of 'PetKind'")
+                .contains("Did you mean 'CAT'");
+        assertThat(d.getData()).isEqualTo("CAT"); // drives the quick-fix
+    }
+
+    @Test
+    void validQualifiedMemberIsClean() {
+        String text = IMPORT_PETKIND
+                + "declare Animal\n  legs : int\nend\n"
+                + "rule R\n  when\n    Animal( legs == PetKind.CAT )\n  then\nend\n";
+        assertThat(lintUnknownTypes(text)).isEmpty();
+    }
+
+    @Test
+    void flagsUnknownQualifiedHeadType() {
+        // The head type itself is unresolved — flagged before any member check.
+        String text = IMPORT_PETKIND
+                + "declare Animal\n  legs : int\nend\n"
+                + "rule R\n  when\n    Animal( legs == PetKindd.CAT )\n  then\nend\n";
+        List<Diagnostic> diags = lintUnknownTypes(text);
+
+        assertThat(diags).hasSize(1);
+        assertThat(diags.get(0).getMessage()).contains("Unknown type 'PetKindd'");
+    }
+
+    @Test
+    void flagsUnknownConstantOfDeclaredEnum() {
+        // A declared enum's constants are verified from the DRL alone (no classpath).
+        // Mirrors the real-world shape Type.MEMBER.property (e.g. TestEnum.Valu.value):
+        // the upper-case member is checked, the lower-case property tail is not.
+        String text = "declare enum Color\n  RED, GREEN;\n  shade : String\nend\n"
+                + "declare Widget\n  c : Color\nend\n"
+                + "rule R\n  when\n    Widget( c == Color.REDD.shade )\n  then\nend\n";
+        List<Diagnostic> diags = lintUnknownTypes(text);
+
+        assertThat(diags).hasSize(1);
+        Diagnostic d = diags.get(0);
+        assertThat(d.getSource()).isEqualTo("drools-type");
+        assertThat(d.getMessage())
+                .contains("'REDD' is not a member of 'Color'")
+                .contains("Did you mean 'RED'");
+        assertThat(d.getData()).isEqualTo("RED");
+    }
+
+    @Test
+    void declaredEnumConstantCheckRunsWithoutClasspath() {
+        // Same check holds when the classpath has not resolved — it needs none.
+        String text = "declare enum Color\n  RED, GREEN;\nend\n"
+                + "declare Widget\n  c : Color\nend\n"
+                + "rule R\n  when\n    Widget( c == Color.REDD )\n  then\nend\n";
+        List<Diagnostic> diags = DRLLintHelper.lintUnknownTypes(
+                text, null, Map.of(), ClassIndex.empty(), members, false);
+
+        assertThat(diags)
+                .singleElement()
+                .satisfies(d -> assertThat(d.getMessage()).contains("'REDD' is not a member of 'Color'"));
+    }
+
+    @Test
+    void validConstantOfDeclaredEnumIsClean() {
+        String text = "declare enum Color\n  RED, GREEN;\nend\n"
+                + "declare Widget\n  c : Color\nend\n"
+                + "rule R\n  when\n    Widget( c == Color.RED )\n  then\nend\n";
+        assertThat(lintUnknownTypes(text)).isEmpty();
+    }
+
+    @Test
+    void lowercasePropertyTailIsNotChased() {
+        // PetKind.CAT.groupType — CAT is valid; the lower-case property is not verified.
+        String text = IMPORT_PETKIND
+                + "declare Animal\n  legs : int\nend\n"
+                + "rule R\n  when\n    Animal( legs == PetKind.CAT.ordinal )\n  then\nend\n";
+        assertThat(lintUnknownTypes(text)).isEmpty();
     }
 }

@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -92,6 +93,39 @@ public final class ClassMemberIndex implements AutoCloseable {
             return Collections.emptyList();
         }
         return cache.computeIfAbsent(fqcn, this::reflectMembers);
+    }
+
+    /**
+     * The names addressable as {@code Type.X} on {@code fqcn}: public fields
+     * (including enum constants and static fields, inherited included) and
+     * public nested-type simple names. Returns {@code null} when the class
+     * cannot be loaded — letting callers distinguish "no such member" (a real
+     * typo) from "couldn't verify" (classpath gap), so they only flag the
+     * former. Loaded without running static initializers.
+     */
+    public Set<String> memberNames(String fqcn) {
+        if (loader == null || fqcn == null || fqcn.isEmpty()) {
+            return null;
+        }
+        Class<?> clazz;
+        try {
+            clazz = Class.forName(fqcn, false, loader);
+        } catch (Throwable t) {
+            return null;
+        }
+        try {
+            Set<String> names = new LinkedHashSet<>();
+            for (java.lang.reflect.Field f : clazz.getFields()) {
+                names.add(f.getName());
+            }
+            for (Class<?> nested : clazz.getClasses()) {
+                names.add(nested.getSimpleName());
+            }
+            return names;
+        } catch (Throwable t) {
+            logger.log(Level.FINE, "Failed to reflect member names of " + fqcn, t);
+            return null;
+        }
     }
 
     private List<Field> reflectMembers(String fqcn) {

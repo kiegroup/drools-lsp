@@ -72,6 +72,12 @@
           "enum": ["off", "hint", "info", "warning", "error"],
           "description": "Severity for the unbalanced parentheses lint check."
         },
+        "drools.lsp.lint.unknownTypes": {
+          "type": "string",
+          "default": "warning",
+          "enum": ["off", "hint", "info", "warning", "error"],
+          "description": "Severity for unrecognized type references in patterns, 'new T(...)' and qualified names, with a 'Did you mean?' quick-fix for likely typos."
+        },
         "drools.lsp.lint.mvelPropertyAccess": {
           "type": "string",
           "default": "off",

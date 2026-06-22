@@ -94,22 +94,32 @@ public final class DRLDeclaredTypeParser {
      * ignored so partial files still yield partial results.
      */
     static List<DeclaredType> parseDeclaredTypes(String text) {
-        List<DeclaredType> types = new ArrayList<>();
-        if (text == null || text.isBlank()) {
-            return types;
-        }
         try {
-            DRL10Parser parser = DRLParserHelper.createDrlParser(text);
-            Lexer lexer = (Lexer) parser.getTokenStream().getTokenSource();
-            lexer.removeErrorListeners();
-            lexer.addErrorListener(SILENT);
-            parser.removeErrorListeners();
-            parser.addErrorListener(SILENT);
-            return extractFromCompilationUnit(parser.compilationUnit());
+            DRL10Parser.CompilationUnitContext cu = parseSilently(text);
+            return cu == null ? new ArrayList<>() : extractFromCompilationUnit(cu);
         } catch (Exception e) {
             logger.fine(() -> "Failed to parse DRL for declared types: " + e.getMessage());
+            return new ArrayList<>();
         }
-        return types;
+    }
+
+    /**
+     * Parses {@code text} into a compilation unit with parser errors silenced
+     * (partial/incomplete DRL is normal in an editor), or {@code null} for
+     * blank input. Shared so callers that need both the declared types and the
+     * parse tree (e.g. the unknown-type check) parse only once.
+     */
+    static DRL10Parser.CompilationUnitContext parseSilently(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        DRL10Parser parser = DRLParserHelper.createDrlParser(text);
+        Lexer lexer = (Lexer) parser.getTokenStream().getTokenSource();
+        lexer.removeErrorListeners();
+        lexer.addErrorListener(SILENT);
+        parser.removeErrorListeners();
+        parser.addErrorListener(SILENT);
+        return parser.compilationUnit();
     }
 
     /**

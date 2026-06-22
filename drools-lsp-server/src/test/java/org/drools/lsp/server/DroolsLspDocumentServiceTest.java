@@ -1,7 +1,13 @@
 package org.drools.lsp.server;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
 
+import org.drools.completion.ClassIndex;
+import org.eclipse.lsp4j.CodeAction;
+import org.eclipse.lsp4j.Command;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DefinitionParams;
@@ -10,8 +16,11 @@ import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
+import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.drools.lsp.server.TestHelperMethods.getDroolsLspDocumentService;
@@ -218,5 +227,65 @@ class DroolsLspDocumentServiceTest {
         assertThat(hover).isNotNull();
         assertThat(hover.getContents().getRight().getValue())
                 .contains("java.lang.Object");
+    }
+
+    // ── unknown-type lint ────────────────────────────────────────────────
+
+    private static final String TYPO_DRL = """
+            package demo;
+
+            declare Person
+              name : String
+            end
+
+            rule R
+              when
+                Persn( )
+              then
+            end
+            """;
+
+    @Test
+    void unknownTypeLintSuppressedUntilClasspathResolved() {
+        // Default service: classpath unresolved (empty index) → pass is skipped,
+        // so a misspelled type produces no drools-type diagnostic.
+        DroolsLspDocumentService service = getDroolsLspDocumentService(TYPO_DRL);
+
+        assertThat(service.validate("myDocument"))
+                .noneSatisfy(d -> assertThat(d.getSource()).isEqualTo("drools-type"));
+    }
+
+    @Test
+    void unknownTypeLintReportsTypoOnceClasspathResolved(@TempDir Path dir) throws Exception {
+        Path classFile = dir.resolve("com/example/Marker.class");
+        Files.createDirectories(classFile.getParent());
+        Files.createFile(classFile);
+
+        DroolsLspDocumentService service = getDroolsLspDocumentService(TYPO_DRL);
+        service.setClassIndex(ClassIndex.build(Set.of(dir))); // classpath now "resolved"
+
+        List<Diagnostic> diags = service.validate("myDocument");
+        assertThat(diags).anySatisfy(d -> {
+            assertThat(d.getSource()).isEqualTo("drools-type");
+            assertThat(d.getMessage()).contains("Persn").contains("Did you mean 'Person'");
+        });
+    }
+
+    @Test
+    void buildUnknownTypeActionsOffersReplaceFix() {
+        Diagnostic d = new Diagnostic();
+        d.setSource("drools-type");
+        d.setData("Person");
+        d.setRange(new Range(new Position(8, 4), new Position(8, 9)));
+
+        List<Either<Command, CodeAction>> actions =
+                DroolsLspDocumentService.buildUnknownTypeActions("myDocument", List.of(d));
+
+        assertThat(actions).hasSize(1);
+        CodeAction ca = actions.get(0).getRight();
+        assertThat(ca.getTitle()).isEqualTo("Replace with 'Person'");
+        assertThat(ca.getEdit().getChanges().get("myDocument"))
+                .singleElement()
+                .satisfies(e -> assertThat(e.getNewText()).isEqualTo("Person"));
     }
 }

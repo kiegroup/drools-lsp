@@ -26,14 +26,27 @@ public final class DRLDiagnosticHelper {
     private DRLDiagnosticHelper() {
     }
 
+    /** A single parse: the compilation unit and the syntax errors found building it. */
+    public static final class Parsed {
+        /** The parse tree, or {@code null} for blank input. */
+        public final DRL10Parser.CompilationUnitContext compilationUnit;
+        /** One diagnostic per syntax error, in document order. */
+        public final List<Diagnostic> diagnostics;
+
+        Parsed(DRL10Parser.CompilationUnitContext compilationUnit, List<Diagnostic> diagnostics) {
+            this.compilationUnit = compilationUnit;
+            this.diagnostics = diagnostics;
+        }
+    }
+
     /**
-     * Parses {@code text} and returns one {@link Diagnostic} per syntax
-     * error, in document order. Returns an empty list for {@code null},
-     * empty, or syntactically clean input.
+     * Parses {@code text} once, returning both the compilation unit and the
+     * syntax diagnostics. Callers that also need the tree (e.g. the unknown-type
+     * lint) can reuse it instead of re-parsing.
      */
-    public static List<Diagnostic> validate(String text) {
+    public static Parsed parse(String text) {
         if (text == null || text.isEmpty()) {
-            return Collections.emptyList();
+            return new Parsed(null, Collections.emptyList());
         }
         DRL10Parser parser = DRLParserHelper.createDrlParser(text);
         List<Diagnostic> diagnostics = new ArrayList<>();
@@ -51,8 +64,16 @@ public final class DRLDiagnosticHelper {
         parser.removeErrorListeners();
         parser.addErrorListener(listener);
 
-        parser.compilationUnit();
-        return diagnostics;
+        return new Parsed(parser.compilationUnit(), diagnostics);
+    }
+
+    /**
+     * Parses {@code text} and returns one {@link Diagnostic} per syntax
+     * error, in document order. Returns an empty list for {@code null},
+     * empty, or syntactically clean input.
+     */
+    public static List<Diagnostic> validate(String text) {
+        return parse(text).diagnostics;
     }
 
     private static class CollectingErrorListener extends BaseErrorListener {
