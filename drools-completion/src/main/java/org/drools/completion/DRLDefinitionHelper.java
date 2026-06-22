@@ -6,12 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
 
-import org.antlr.v4.runtime.BaseErrorListener;
-import org.antlr.v4.runtime.Lexer;
-import org.antlr.v4.runtime.RecognitionException;
-import org.antlr.v4.runtime.Recognizer;
 import org.drools.drl.parser.antlr4.DRL10Parser;
-import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
@@ -35,15 +30,6 @@ public final class DRLDefinitionHelper {
 
     private static final Logger logger =
             Logger.getLogger(DRLDefinitionHelper.class.getName());
-
-    /** Swallows ANTLR parse errors — incomplete documents are normal. */
-    private static final BaseErrorListener SILENT = new BaseErrorListener() {
-        @Override
-        public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol,
-                                int line, int charPositionInLine, String msg,
-                                RecognitionException e) {
-        }
-    };
 
     private DRLDefinitionHelper() {
     }
@@ -135,12 +121,7 @@ public final class DRLDefinitionHelper {
     /** Resolves {@code word} to an FQCN from {@code text}'s imports + class index. Shared with type hierarchy. */
     static String resolveFqcn(String text, String word, ClassIndex classIndex) {
         try {
-            DRL10Parser parser = DRLParserHelper.createDrlParser(text);
-            Lexer lexer = (Lexer) parser.getTokenStream().getTokenSource();
-            lexer.removeErrorListeners();
-            lexer.addErrorListener(SILENT);
-            parser.removeErrorListeners();
-            parser.addErrorListener(SILENT);
+            DRL10Parser parser = DRLParsers.silent(text);
             return DRLCompletionHelper.resolveFqcn(word, word, parser.compilationUnit(), classIndex);
         } catch (Exception e) {
             logger.fine(() -> "FQCN resolution failed for " + word + ": " + e.getMessage());
