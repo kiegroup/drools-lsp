@@ -91,7 +91,7 @@ public final class DRLDeclaredTypeParser {
      * Parses all {@code declare} blocks in {@code text}. Parser errors are
      * ignored so partial files still yield partial results.
      */
-    private static List<DeclaredType> parseDeclaredTypes(String text) {
+    static List<DeclaredType> parseDeclaredTypes(String text) {
         List<DeclaredType> types = new ArrayList<>();
         if (text == null || text.isBlank()) {
             return types;

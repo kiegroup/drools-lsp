@@ -17,6 +17,7 @@ import java.util.logging.Logger;
 import org.drools.completion.ClassIndex;
 import org.drools.completion.ClassMemberIndex;
 import org.drools.completion.DRLCompletionHelper;
+import org.drools.completion.DRLDefinitionHelper;
 import org.drools.completion.DRLDiagnosticHelper;
 import org.drools.completion.DRLLintHelper;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
@@ -28,7 +29,10 @@ import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.CompletionParams;
+import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.Diagnostic;
+import org.eclipse.lsp4j.Location;
+import org.eclipse.lsp4j.LocationLink;
 import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
@@ -128,6 +132,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
         try {
             return supplier.get();
         } catch (Exception e) {
+            logger.log(Level.WARNING, "Error during completion/definition/code action", e);
             server.getClient().showMessage(new MessageParams(MessageType.Error, e.toString()));
         }
         return null;
@@ -140,8 +145,8 @@ public class DroolsLspDocumentService implements TextDocumentService {
         Position caretPosition = completionParams.getPosition();
         List<CompletionItem> completionItems = DRLCompletionHelper.getCompletionItems(text, caretPosition, server.getClient(), classIndex, classMemberIndex, toPath(uri));
 
-        server.getClient().showMessage(new MessageParams(MessageType.Info, "Position=" + caretPosition));
-        server.getClient().showMessage(new MessageParams(MessageType.Info, "completionItems = " + completionItems));
+        logger.fine("Position=" + caretPosition);
+        logger.fine("completionItems = " + completionItems);
 
         return completionItems;
     }
@@ -153,6 +158,17 @@ public class DroolsLspDocumentService implements TextDocumentService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    @Override
+    public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>> definition(DefinitionParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            List<Location> definitions = attempt(() -> DRLDefinitionHelper.findDefinitions(
+                    uri, text, params.getPosition(), classIndex, server.getBuildOutputDirs()));
+            return Either.forLeft(definitions == null ? List.of() : definitions);
+        });
     }
 
     @Override
