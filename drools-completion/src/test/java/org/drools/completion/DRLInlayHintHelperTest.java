@@ -5,6 +5,7 @@ import java.util.List;
 import org.eclipse.lsp4j.InlayHint;
 import org.eclipse.lsp4j.InlayHintKind;
 import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.jupiter.api.Test;
 
@@ -72,12 +73,49 @@ class DRLInlayHintHelperTest {
     }
 
     @Test
+    void hintExactlyAtRangeEndIsExcluded() {
+        // Same DRL as singleBindingUsedInRhsProducesHint: the lone hint sits at
+        // (3, 11). LSP ranges are end-exclusive, so a range ending exactly at the
+        // hint position must NOT include it, while extending the end past it does.
+        String drl =
+            "rule \"r\" when\n" +
+            "  $p : Patient(age > 18)\n" +
+            "then\n" +
+            "  update($p);\n" +
+            "end\n";
+
+        Range endsAtHint = new Range(new Position(0, 0), new Position(3, 11));
+        assertThat(DRLInlayHintHelper.getHints(drl, endsAtHint)).isEmpty();
+
+        Range endsPastHint = new Range(new Position(0, 0), new Position(3, 12));
+        assertThat(DRLInlayHintHelper.getHints(drl, endsPastHint)).hasSize(1);
+    }
+
+    @Test
     void rhsReferencesWithoutLhsBindingAreIgnored() {
         String drl =
             "rule \"r\" when\n" +
             "  $p : Patient()\n" +
             "then\n" +
             "  $unknown.doStuff();\n" +
+            "  update($p);\n" +
+            "end\n";
+
+        List<InlayHint> hints = DRLInlayHintHelper.getHints(drl, null);
+
+        assertThat(hints).hasSize(1);
+        assertThat(labelOf(hints.get(0))).isEqualTo(": Patient");
+    }
+
+    @Test
+    void fullyQualifiedPatternTypeStillBindsOuterVariable() {
+        // A fully-qualified pattern type starts with a lowercase package segment;
+        // the binding `$p` must still resolve to the (simple) type name and the
+        // RHS usage get a hint.
+        String drl =
+            "rule \"r\" when\n" +
+            "  $p : org.example.Patient(age > 18)\n" +
+            "then\n" +
             "  update($p);\n" +
             "end\n";
 

@@ -202,10 +202,7 @@ public final class DRLDefinitionHelper {
         return new Range(new Position(0, 0), new Position(0, 0));
     }
 
-    /**
-     * Expands the identifier ({@code [A-Za-z0-9_$]+}) around the caret.
-     * Shared with {@link DRLHoverHelper}.
-     */
+    /** Expands the identifier ({@code [A-Za-z0-9_$]+}) around the caret. */
     static String wordAt(String text, Position position) {
         String[] lines = text.split("\r?\n", -1);
         if (position.getLine() < 0 || position.getLine() >= lines.length) {

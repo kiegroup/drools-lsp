@@ -33,9 +33,20 @@ public final class LhsBindingResolver {
 
     private static final Pattern RULE_WHEN = Pattern.compile(
             "(?s)\\brule\\b.*?\\bwhen\\b(.*?)\\bthen\\b");
+    private static final Pattern RULE_BLOCK = Pattern.compile(
+            "(?s)\\brule\\b.*?\\bwhen\\b(.*?)\\bthen\\b.*?\\bend\\b");
 
+    /**
+     * Pattern head: an optional {@code $name :} binding prefix, then the pattern
+     * type, then {@code (}. group(1) is the binding name (or {@code null}); group(2)
+     * the type, which may be fully qualified ({@code org.example.Person}) — the
+     * leading package segments are stripped by {@link #simpleName}. The final
+     * (simple-name) segment must start uppercase, which keeps this from matching
+     * lowercase field accessors/method calls; DRL patterns always have parens, so
+     * the trailing {@code (} is required.
+     */
     private static final Pattern PATTERN_START = Pattern.compile(
-            "(?:\\$(\\w+)\\s*:\\s*)?\\b([A-Z][A-Za-z0-9_.]*)\\s*\\(");
+            "(?:\\$(\\w+)\\s*:\\s*)?\\b((?:\\w+\\.)*[A-Z]\\w*)\\s*\\(");
 
     private static final Pattern FIELD_BINDING = Pattern.compile(
             "\\$(\\w+)\\s*:\\s*([a-z]\\w*)(?![\\w.(])");
@@ -133,6 +144,39 @@ public final class LhsBindingResolver {
             bindings.putAll(collect(rule.group(1), typesByName, accumResultTypes).types);
         }
         return bindings;
+    }
+
+    /**
+     * As {@link #resolve(String, Map)}, but scoped to the single rule block
+     * enclosing {@code offset} (a character offset into {@code text}). Callers
+     * with a caret position — hover, go-to-definition — should prefer this:
+     * {@link #resolve} merges bindings across <em>all</em> rules last-write-wins,
+     * so a binding name reused across rules (e.g. {@code $p}) would otherwise
+     * resolve to whichever rule appears last in the file rather than the one
+     * under the caret. Falls back to whole-text {@link #resolve} when
+     * {@code offset} is outside every rule block.
+     */
+    public static Map<String, String> resolveAt(String text, int offset,
+                                                Map<String, DeclaredType> typesByName) {
+        return resolveAt(text, offset, typesByName, AccumulateFunctionTypes.get());
+    }
+
+    /**
+     * As {@link #resolveAt(String, int, Map)}, plus accumulate result bindings.
+     */
+    public static Map<String, String> resolveAt(String text, int offset,
+                                                Map<String, DeclaredType> typesByName,
+                                                Map<String, String> accumResultTypes) {
+        if (text == null || text.isEmpty()) {
+            return new HashMap<>();
+        }
+        Matcher block = RULE_BLOCK.matcher(text);
+        while (block.find()) {
+            if (offset >= block.start() && offset < block.end()) {
+                return collect(block.group(1), typesByName, accumResultTypes).types;
+            }
+        }
+        return resolve(text, typesByName, accumResultTypes);
     }
 
     /**
