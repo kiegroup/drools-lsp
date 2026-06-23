@@ -83,6 +83,11 @@
           "default": "off",
           "enum": ["off", "hint", "info", "warning", "error"],
           "description": "Severity for the MVEL property-access style hint (prefer 'name' over 'getName()' in LHS constraints)."
+        },
+        "drools.lsp.inlayHints.enabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show inline type hints for DRL rule bindings (e.g. `$count : count()` → `: Long`). VSCode's global `#editor.inlayHints.enabled#` still governs whether inlay hints are displayed at all."
         }
       }
     }
@@ -115,6 +120,6 @@
     "diff": "8.0.4"
   },
   "dependencies": {
-    "vscode-languageclient": "5.1.1"
+    "vscode-languageclient": "^9.0.1"
   }
 }

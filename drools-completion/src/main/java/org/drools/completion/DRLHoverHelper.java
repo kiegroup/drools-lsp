@@ -4,8 +4,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.Lexer;
@@ -40,10 +38,6 @@ public final class DRLHoverHelper {
                                 RecognitionException e) {
         }
     };
-
-    /** Matches a bound-variable declaration: {@code $var : TypeName(} or {@code $var : TypeName }. */
-    private static final Pattern BINDING_PATTERN =
-            Pattern.compile("(\\$\\w+)\\s*:\\s*([A-Z]\\w*)\\s*[(\\s]");
 
     private DRLHoverHelper() {
     }
@@ -102,9 +96,14 @@ public final class DRLHoverHelper {
             return null;
         }
 
-        // 2. Bound variable: resolve $var to its pattern type, then hover that type.
+        // 2. Bound variable: resolve $var to its type via the shared binding
+        //    engine (pattern, field, nested-path, JDK-accessor, accumulate),
+        //    scoped to the rule under the caret so a binding name reused across
+        //    rules resolves to the right one, then hover that type.
         if (word.startsWith("$")) {
-            String boundType = resolveBinding(word, text);
+            int offset = positionToOffset(text, position);
+            String boundType =
+                    LhsBindingResolver.resolveAt(text, offset, typeIndex).get(word.substring(1));
             if (boundType != null) {
                 DeclaredType boundDeclared = typeIndex.get(boundType);
                 if (boundDeclared != null) {
@@ -156,20 +155,6 @@ public final class DRLHoverHelper {
         Map<String, String> linkTargets =
                 DRLWorkspaceTypeIndex.buildLinkTargets(text, documentPath, openFiles);
         return renderDeclared(declared, allFields, doc, linkTargets);
-    }
-
-    /**
-     * Scans {@code text} for a binding declaration {@code $var : TypeName} and
-     * returns {@code TypeName} when {@code varName} matches, or {@code null}.
-     */
-    private static String resolveBinding(String varName, String text) {
-        Matcher m = BINDING_PATTERN.matcher(text);
-        while (m.find()) {
-            if (m.group(1).equals(varName)) {
-                return m.group(2);
-            }
-        }
-        return null;
     }
 
     private static Field findField(String patternType, String fieldName,
@@ -250,6 +235,24 @@ public final class DRLHoverHelper {
 
     private static Hover markdown(String content) {
         return new Hover(new MarkupContent(MarkupKind.MARKDOWN, content));
+    }
+
+    /**
+     * Converts an LSP {@link Position} (zero-based line + UTF-16 character) to a
+     * character offset into {@code text}. DRL files are ASCII in practice, so
+     * the character offset matches code units. Clamped to {@code text.length()}.
+     */
+    private static int positionToOffset(String text, Position position) {
+        int line = position.getLine();
+        int offset = 0;
+        int currentLine = 0;
+        while (currentLine < line && offset < text.length()) {
+            if (text.charAt(offset) == '\n') {
+                currentLine++;
+            }
+            offset++;
+        }
+        return Math.min(offset + position.getCharacter(), text.length());
     }
 
     private static DRL10Parser silentParser(String text) {

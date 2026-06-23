@@ -137,6 +137,7 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         initializeResult.getCapabilities().setDefinitionProvider(true);
         initializeResult.getCapabilities().setHoverProvider(true);
         initializeResult.getCapabilities().setCodeActionProvider(true);
+        initializeResult.getCapabilities().setInlayHintProvider(true);
 
         String rootUri = params.getRootUri();
         if (rootUri != null) {
