@@ -146,9 +146,14 @@ export function activate(context: vscode.ExtensionContext) {
     }
 }
 
-// this method is called when your extension is deactivated
-export function deactivate() {
-    log.info('DRL Language Server deactivated.');
+// this method is called when your extension is deactivated. Returning the
+// stop() promise lets VSCode await a clean language-server shutdown.
+export function deactivate(): Thenable<void> | undefined {
+	log.info('DRL Language Server deactivated.');
+	if (!languageClient) {
+		return undefined;
+	}
+	return languageClient.stop();
 }
 
 function getJavaHome() : string | undefined {

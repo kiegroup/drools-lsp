@@ -165,6 +165,11 @@ public final class DRLInlayHintHelper {
         return new Position(line, safe - lastNewline - 1);
     }
 
+    /**
+     * Tests whether {@code pos} lies within {@code range}. The end is exclusive,
+     * matching LSP range semantics — a position exactly at {@code range.end} is
+     * outside the range, so no hint is emitted there.
+     */
     private static boolean isPositionInRange(Position pos, Range range) {
         Position start = range.getStart();
         Position end = range.getEnd();
@@ -177,7 +182,7 @@ public final class DRLInlayHintHelper {
         if (pos.getLine() == start.getLine() && pos.getCharacter() < start.getCharacter()) {
             return false;
         }
-        if (pos.getLine() == end.getLine() && pos.getCharacter() > end.getCharacter()) {
+        if (pos.getLine() == end.getLine() && pos.getCharacter() >= end.getCharacter()) {
             return false;
         }
         return true;

@@ -256,6 +256,45 @@ class DRLHoverHelperTest {
     }
 
     @Test
+    void hoverOnReusedBindingNameResolvesToTheRuleUnderTheCaret() {
+        // `$p` is bound to a different type in each rule. Hovering `$p` in the
+        // first rule must show Person (the rule under the caret), not Account
+        // (the last rule in the file, which whole-file merging would win).
+        String drl = """
+                package demo;
+
+                declare Person
+                  name : String
+                end
+
+                declare Account
+                  balance : int
+                end
+
+                rule R1
+                  when
+                    $p : Person( name == "x" )
+                  then
+                    use($p);
+                end
+
+                rule R2
+                  when
+                    $p : Account( balance > 0 )
+                  then
+                    use($p);
+                end
+                """;
+        // Caret on "$p" in R1's RHS usage: line 14 `    use($p);`, col 9 = 'p'.
+        Hover hover = DRLHoverHelper.hover(drl, new Position(14, 9),
+                ClassIndex.empty(), ClassMemberIndex.empty(), null);
+
+        String md = content(hover);
+        assertThat(md).contains("declare Person").contains("name : String");
+        assertThat(md).doesNotContain("Account");
+    }
+
+    @Test
     void hoverOnJavaLangTypeResolvesWithoutImport() {
         // java.lang.Object is implicitly available and has no bean getters, yet
         // the FQN header should still render (the members-empty guard is gone).
