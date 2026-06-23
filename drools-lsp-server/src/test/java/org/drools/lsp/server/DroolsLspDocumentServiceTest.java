@@ -7,9 +7,12 @@ import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DefinitionParams;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
+import org.eclipse.lsp4j.InlayHint;
+import org.eclipse.lsp4j.InlayHintParams;
 import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.junit.jupiter.api.Test;
 
@@ -218,5 +221,50 @@ class DroolsLspDocumentServiceTest {
         assertThat(hover).isNotNull();
         assertThat(hover.getContents().getRight().getValue())
                 .contains("java.lang.Object");
+    }
+
+    @Test
+    void inlayHintShowsBindingTypeAtRhsUsage() throws Exception {
+        String drl = "rule \"r\" when\n"
+                + "  $p : Patient(age > 18)\n"
+                + "then\n"
+                + "  update($p);\n"
+                + "end\n";
+        DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+        InlayHintParams params = new InlayHintParams(
+                new TextDocumentIdentifier("myDocument"),
+                new Range(new Position(0, 0), new Position(99, 0)));
+        List<InlayHint> hints = service.inlayHint(params).get();
+
+        assertThat(hints).isNotEmpty();
+        assertThat(hints).anySatisfy(h ->
+                assertThat(h.getLabel().getLeft()).isEqualTo(": Patient"));
+    }
+
+    @Test
+    void inlayHintReturnsEmptyWhenDisabledBySetting() throws Exception {
+        String previous = System.getProperty("drools.lsp.inlayHints.enabled");
+        System.setProperty("drools.lsp.inlayHints.enabled", "false");
+        try {
+            String drl = "rule \"r\" when\n"
+                    + "  $p : Patient(age > 18)\n"
+                    + "then\n"
+                    + "  update($p);\n"
+                    + "end\n";
+            DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+            InlayHintParams params = new InlayHintParams(
+                    new TextDocumentIdentifier("myDocument"),
+                    new Range(new Position(0, 0), new Position(99, 0)));
+
+            assertThat(service.inlayHint(params).get()).isEmpty();
+        } finally {
+            if (previous == null) {
+                System.clearProperty("drools.lsp.inlayHints.enabled");
+            } else {
+                System.setProperty("drools.lsp.inlayHints.enabled", previous);
+            }
+        }
     }
 }

@@ -8,8 +8,10 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 // Import the language client, language client options and server options from VSCode language client.
-import {LanguageClient, LanguageClientOptions, ServerOptions, StreamInfo} from 'vscode-languageclient';
+import {LanguageClient, LanguageClientOptions, ServerOptions, StreamInfo} from 'vscode-languageclient/node';
 import * as net from "net";
+
+let languageClient: LanguageClient | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
     console.log('on activate, your extension "drl"....');
@@ -75,6 +77,14 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
 
+        // Inlay hints: boolean toggle, passed through so an explicit `false`
+        // reaches the server (it defaults to enabled). VSCode's global
+        // editor.inlayHints.enabled still gates display independently.
+        const inlayHintsEnabled: boolean | undefined = config.get('drools.lsp.inlayHints.enabled');
+        if (inlayHintsEnabled !== undefined) {
+            args.push(`-Ddrools.lsp.inlayHints.enabled=${inlayHintsEnabled}`);
+        }
+
         args.push('-jar', serverJar);
 
         serverOptions = {
@@ -93,20 +103,25 @@ export function activate(context: vscode.ExtensionContext) {
                 fileEvents: vscode.workspace.createFileSystemWatcher('**/target/classes/**/*.class')
             }
         };
-        // Create the language client and start the client.
-        let languageClient: LanguageClient = new LanguageClient('Drools', 'DRL Language Server', serverOptions, clientOptions);
-        let disposable = languageClient.start();
-
-        // Disposables to remove on deactivation.
-        context.subscriptions.push(disposable);
+        // Create and start the language client. In vscode-languageclient v8+,
+        // start() returns a Promise<void> (not a Disposable); the client is torn
+        // down via stop() in deactivate() below, which keeps it out of
+        // context.subscriptions so it isn't disposed twice.
+        languageClient = new LanguageClient('Drools', 'DRL Language Server', serverOptions, clientOptions);
+        languageClient.start();
 
         console.log('Congratulations, your extension "drl" is now active!');
     }
 }
 
-// this method is called when your extension is deactivated
-export function deactivate() { 
+// this method is called when your extension is deactivated. Returning the
+// stop() promise lets VSCode await a clean language-server shutdown.
+export function deactivate(): Thenable<void> | undefined {
 	console.log('Your extension "drl" is now deactivated!');
+	if (!languageClient) {
+		return undefined;
+	}
+	return languageClient.stop();
 }
 
 function getJavaHome() : string | undefined {
