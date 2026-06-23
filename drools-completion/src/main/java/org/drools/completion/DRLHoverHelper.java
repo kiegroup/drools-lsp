@@ -97,10 +97,13 @@ public final class DRLHoverHelper {
         }
 
         // 2. Bound variable: resolve $var to its type via the shared binding
-        //    engine (pattern, field, nested-path, JDK-accessor, accumulate), then
-        //    hover that type.
+        //    engine (pattern, field, nested-path, JDK-accessor, accumulate),
+        //    scoped to the rule under the caret so a binding name reused across
+        //    rules resolves to the right one, then hover that type.
         if (word.startsWith("$")) {
-            String boundType = LhsBindingResolver.resolve(text, typeIndex).get(word.substring(1));
+            int offset = positionToOffset(text, position);
+            String boundType =
+                    LhsBindingResolver.resolveAt(text, offset, typeIndex).get(word.substring(1));
             if (boundType != null) {
                 DeclaredType boundDeclared = typeIndex.get(boundType);
                 if (boundDeclared != null) {
@@ -232,6 +235,24 @@ public final class DRLHoverHelper {
 
     private static Hover markdown(String content) {
         return new Hover(new MarkupContent(MarkupKind.MARKDOWN, content));
+    }
+
+    /**
+     * Converts an LSP {@link Position} (zero-based line + UTF-16 character) to a
+     * character offset into {@code text}. DRL files are ASCII in practice, so
+     * the character offset matches code units. Clamped to {@code text.length()}.
+     */
+    private static int positionToOffset(String text, Position position) {
+        int line = position.getLine();
+        int offset = 0;
+        int currentLine = 0;
+        while (currentLine < line && offset < text.length()) {
+            if (text.charAt(offset) == '\n') {
+                currentLine++;
+            }
+            offset++;
+        }
+        return Math.min(offset + position.getCharacter(), text.length());
     }
 
     private static DRL10Parser silentParser(String text) {
