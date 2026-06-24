@@ -127,7 +127,6 @@ export function activate(context: vscode.ExtensionContext) {
 
     if (serverOptions) {
         log.info('Starting language client');
-        // Options to control the language client
         let clientOptions: LanguageClientOptions = {
             documentSelector: [{scheme: 'file', language: 'drools'}],
             synchronize: {
@@ -135,11 +134,7 @@ export function activate(context: vscode.ExtensionContext) {
             },
             outputChannel: channel
         };
-        // Create and start the language client. In vscode-languageclient v8+,
-        // start() returns a Promise<void> (not a Disposable); the client is torn
-        // down via the subscriptions disposal on deactivate.
         languageClient = new LanguageClient('Drools', 'DRL Language Server', serverOptions, clientOptions);
-        context.subscriptions.push(languageClient);  // client is Disposable in v8+; stops on deactivate
         languageClient.start();
 
         log.info('DRL Language Server activated.');
