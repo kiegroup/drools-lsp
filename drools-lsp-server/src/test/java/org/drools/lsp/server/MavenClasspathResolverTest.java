@@ -43,6 +43,21 @@ class MavenClasspathResolverTest {
     }
 
     @Test
+    void resolveBuildOutputDirsReturnsClassDirsWithoutInvokingMaven() throws IOException {
+        // A minimal project with compiled output but no resolvable dependencies.
+        // The build-output dirs must come back from the filesystem alone (no mvn),
+        // so the server can index the project's own classes before the slower
+        // dependency-JAR resolution runs.
+        Files.writeString(tempDir.resolve("pom.xml"), "<project/>");
+        Path classes = tempDir.resolve("target/classes");
+        Files.createDirectories(classes);
+
+        Set<Path> dirs = MavenClasspathResolver.resolveBuildOutputDirs(tempDir);
+
+        assertThat(dirs).contains(classes);
+    }
+
+    @Test
     void resolveReturnsClasspathEntriesForRealProject() {
         Path projectRoot = Path.of(System.getProperty("user.dir")).getParent();
         if (!Files.exists(projectRoot.resolve("pom.xml"))) {
