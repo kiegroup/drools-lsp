@@ -84,7 +84,7 @@ public class MavenClasspathResolver {
             if (Files.exists(modulePom)) {
                 result.add(modulePom);
             } else {
-                logger.fine(() -> "Declared module pom.xml not found: " + modulePom);
+                logger.warning(() -> "Declared module pom.xml not found: " + modulePom);
             }
         }
         return result;
