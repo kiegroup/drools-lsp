@@ -189,17 +189,37 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
             CompletableFuture.runAsync(() -> {
                 try {
                     Path rootPath = Paths.get(URI.create(rootUri));
+
+                    // Resolve against the configured custom POM root(s) when set,
+                    // otherwise the workspace root.
                     String pomPathProp = System.getProperty("drools.lsp.maven.pomPath");
-                    Set<Path> resolved;
+                    List<Path> mavenRoots;
                     if (pomPathProp != null && !pomPathProp.isBlank()) {
-                        resolved = new LinkedHashSet<>();
-                        for (Path mavenRoot : resolveCustomMavenRoots(rootPath, pomPathProp)) {
-                            logger.fine(() -> "Using custom Maven root: " + mavenRoot);
-                            resolved.addAll(MavenClasspathResolver.resolve(mavenRoot));
-                        }
+                        mavenRoots = resolveCustomMavenRoots(rootPath, pomPathProp);
+                        mavenRoots.forEach(root -> logger.fine(() -> "Using custom Maven root: " + root));
                     } else {
                         logger.fine(() -> "Resolving Maven classpath from: " + rootPath);
-                        resolved = MavenClasspathResolver.resolve(rootPath);
+                        mavenRoots = List.of(rootPath);
+                    }
+
+                    // Publish the project's own compiled classes first. This only
+                    // scans the filesystem (no mvn), so type-name completion is
+                    // available within milliseconds rather than waiting on the
+                    // dependency-JAR resolution below — which shells out to mvn and
+                    // can take many seconds.
+                    Set<Path> outputDirs = new LinkedHashSet<>();
+                    for (Path mavenRoot : mavenRoots) {
+                        outputDirs.addAll(MavenClasspathResolver.resolveBuildOutputDirs(mavenRoot));
+                    }
+                    buildOutputDirs = outputDirs;
+                    textService.setClassIndex(ClassIndex.build(outputDirs));
+
+                    // Then resolve the full classpath (dependency JARs via mvn) and
+                    // merge, so member hover and field completion over dependencies
+                    // become available too.
+                    Set<Path> resolved = new LinkedHashSet<>();
+                    for (Path mavenRoot : mavenRoots) {
+                        resolved.addAll(MavenClasspathResolver.resolve(mavenRoot));
                     }
                     setResolvedClasspath(resolved);
                     ClassIndex outputIndex = ClassIndex.build(buildOutputDirs);
