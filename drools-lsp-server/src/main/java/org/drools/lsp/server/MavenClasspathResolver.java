@@ -39,6 +39,22 @@ public class MavenClasspathResolver {
         return classpathEntries;
     }
 
+    /**
+     * Returns only the modules' compiled-output directories (target/classes and
+     * the like), located via filesystem conventions without invoking {@code mvn}.
+     *
+     * <p>This is the fast half of {@link #resolve(Path)}: it lets the server index
+     * the project's own classes immediately, before the slower dependency-JAR
+     * resolution (which shells out to {@code mvn}) has completed.
+     */
+    public static Set<Path> resolveBuildOutputDirs(Path rootDir) {
+        Set<Path> dirs = new LinkedHashSet<>();
+        for (Path pom : findPomFiles(rootDir)) {
+            dirs.addAll(BuildOutputLocator.findClassDirs(pom.getParent()));
+        }
+        return dirs;
+    }
+
     static List<Path> findPomFiles(Path rootDir) {
         List<Path> result = new ArrayList<>();
         try {

@@ -144,6 +144,18 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
             CompletableFuture.runAsync(() -> {
                 try {
                     Path rootPath = Paths.get(URI.create(rootUri));
+
+                    // Publish the project's own compiled classes first. This only
+                    // scans the filesystem (no mvn), so type-relianlt features are
+                    // available within milliseconds rather than waiting on the
+                    // dependency-JAR resolution below — which shells out to mvn and
+                    // can take many seconds.
+                    Set<Path> outputDirs = MavenClasspathResolver.resolveBuildOutputDirs(rootPath);
+                    buildOutputDirs = outputDirs;
+                    textService.setClassIndex(ClassIndex.build(outputDirs));
+
+                    // Then resolve the full classpath (dependency JARs via mvn) and
+                    // merge, so features reliant on this become available subsequently.
                     Set<Path> resolved = MavenClasspathResolver.resolve(rootPath);
                     setResolvedClasspath(resolved);
                     ClassIndex outputIndex = ClassIndex.build(buildOutputDirs);
