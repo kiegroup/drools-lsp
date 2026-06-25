@@ -20,6 +20,8 @@ import org.drools.completion.ClassMemberIndex;
 import org.drools.completion.DRLCompletionHelper;
 import org.drools.completion.DRLDefinitionHelper;
 import org.drools.completion.DRLDiagnosticHelper;
+import org.drools.completion.DRLDocumentSymbolHelper;
+import org.drools.completion.DRLFoldingRangeHelper;
 import org.drools.completion.DRLHoverHelper;
 import org.drools.completion.DRLInlayHintHelper;
 import org.drools.completion.DRLLintHelper;
@@ -40,14 +42,21 @@ import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DidSaveTextDocumentParams;
+import org.eclipse.lsp4j.DocumentDiagnosticParams;
+import org.eclipse.lsp4j.DocumentDiagnosticReport;
+import org.eclipse.lsp4j.DocumentSymbol;
+import org.eclipse.lsp4j.DocumentSymbolParams;
+import org.eclipse.lsp4j.FoldingRange;
+import org.eclipse.lsp4j.FoldingRangeRequestParams;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.InlayHint;
 import org.eclipse.lsp4j.InlayHintParams;
+import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.MessageParams;
 import org.eclipse.lsp4j.MessageType;
 import org.eclipse.lsp4j.Position;
-import org.eclipse.lsp4j.PublishDiagnosticsParams;
+import org.eclipse.lsp4j.RelatedFullDocumentDiagnosticReport;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextEdit;
 import org.eclipse.lsp4j.WorkspaceEdit;
@@ -82,13 +91,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     @Override
     public void didOpen(DidOpenTextDocumentParams params) {
-        String uri = params.getTextDocument().getUri();
-        sourcesMap.put(uri, params.getTextDocument().getText());
-        CompletableFuture.runAsync(() ->
-                server.getClient().publishDiagnostics(
-                        new PublishDiagnosticsParams(uri, validate(uri))
-                )
-        );
+        sourcesMap.put(params.getTextDocument().getUri(), params.getTextDocument().getText());
     }
 
     /**
@@ -109,13 +112,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     @Override
     public void didChange(DidChangeTextDocumentParams params) {
-        String uri = params.getTextDocument().getUri();
-        sourcesMap.put(uri, params.getContentChanges().get(0).getText());
-        CompletableFuture.runAsync(() ->
-                server.getClient().publishDiagnostics(
-                        new PublishDiagnosticsParams(uri, validate(uri))
-                )
-        );
+        sourcesMap.put(params.getTextDocument().getUri(), params.getContentChanges().get(0).getText());
     }
 
     public String getRuleName(CompletionParams completionParams) {
@@ -243,6 +240,46 @@ public class DroolsLspDocumentService implements TextDocumentService {
     }
 
     @Override
+    @SuppressWarnings("deprecation")  // Either<SymbolInformation, …> is the lsp4j signature; we return the DocumentSymbol side.
+    public CompletableFuture<List<Either<SymbolInformation, DocumentSymbol>>> documentSymbol(DocumentSymbolParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<Either<SymbolInformation, DocumentSymbol>>emptyList();
+            }
+            String text = sourcesMap.get(params.getTextDocument().getUri());
+            List<DocumentSymbol> symbols = DRLDocumentSymbolHelper.symbols(text);
+            List<Either<SymbolInformation, DocumentSymbol>> result = new ArrayList<>(symbols.size());
+            for (DocumentSymbol symbol : symbols) {
+                result.add(Either.forRight(symbol));
+            }
+            return result;
+        });
+    }
+
+    @Override
+    public CompletableFuture<DocumentDiagnosticReport> diagnostic(DocumentDiagnosticParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<Diagnostic> items =
+                    (params != null && params.getTextDocument() != null
+                            && sourcesMap.containsKey(params.getTextDocument().getUri()))
+                            ? validate(params.getTextDocument().getUri())
+                            : Collections.emptyList();
+            return new DocumentDiagnosticReport(new RelatedFullDocumentDiagnosticReport(items));
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<FoldingRange>> foldingRange(FoldingRangeRequestParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<FoldingRange>emptyList();
+            }
+            String text = sourcesMap.get(params.getTextDocument().getUri());
+            return DRLFoldingRangeHelper.foldingRanges(text);
+        });
+    }
+
+    @Override
     public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>> definition(DefinitionParams params) {
         return CompletableFuture.supplyAsync(() -> {
             String uri = params.getTextDocument().getUri();
@@ -344,15 +381,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     @Override
     public void didClose(DidCloseTextDocumentParams params) {
-        String uri = params.getTextDocument().getUri();
-        sourcesMap.remove(uri);
-        // Clear the document's diagnostics so stale squiggles don't survive
-        // the editor closing the file.
-        CompletableFuture.runAsync(() ->
-                server.getClient().publishDiagnostics(
-                        new PublishDiagnosticsParams(uri, Collections.emptyList())
-                )
-        );
+        sourcesMap.remove(params.getTextDocument().getUri());
     }
 
     @Override
