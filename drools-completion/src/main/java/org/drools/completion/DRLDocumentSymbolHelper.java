@@ -4,9 +4,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
 
+import org.antlr.v4.runtime.BaseErrorListener;
+import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.ParserRuleContext;
+import org.antlr.v4.runtime.RecognitionException;
+import org.antlr.v4.runtime.Recognizer;
 import org.antlr.v4.runtime.Token;
 import org.drools.drl.parser.antlr4.DRL10Parser;
+import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.DocumentSymbol;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
@@ -34,6 +39,15 @@ public final class DRLDocumentSymbolHelper {
 
     private static final Logger logger = Logger.getLogger(DRLDocumentSymbolHelper.class.getName());
 
+    /** Swallows ANTLR parse errors — incomplete documents are normal. */
+    private static final BaseErrorListener SILENT = new BaseErrorListener() {
+        @Override
+        public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol,
+                                int line, int charPositionInLine, String msg,
+                                RecognitionException e) {
+        }
+    };
+
     private DRLDocumentSymbolHelper() {
     }
 
@@ -44,7 +58,7 @@ public final class DRLDocumentSymbolHelper {
             return out;
         }
         try {
-            DRL10Parser parser = DRLParsers.silent(text);
+            DRL10Parser parser = silentParser(text);
             DRL10Parser.CompilationUnitContext cu = parser.compilationUnit();
             if (cu == null) {
                 return out;
@@ -220,5 +234,15 @@ public final class DRLDocumentSymbolHelper {
     private static boolean before(Position a, Position b) {
         return a.getLine() < b.getLine()
                 || (a.getLine() == b.getLine() && a.getCharacter() < b.getCharacter());
+    }
+
+    private static DRL10Parser silentParser(String text) {
+        DRL10Parser parser = DRLParserHelper.createDrlParser(text);
+        Lexer lexer = (Lexer) parser.getTokenStream().getTokenSource();
+        lexer.removeErrorListeners();
+        lexer.addErrorListener(SILENT);
+        parser.removeErrorListeners();
+        parser.addErrorListener(SILENT);
+        return parser;
     }
 }
