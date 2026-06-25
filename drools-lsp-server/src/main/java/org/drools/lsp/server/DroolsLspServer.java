@@ -5,7 +5,9 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
@@ -139,6 +141,38 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
         return jars;
     }
 
+    /**
+     * Maps the {@code drools.lsp.maven.pomPath} setting to the Maven root
+     * directories whose classpath should be resolved.
+     *
+     * <p>Each path-separator-delimited entry may point at a {@code pom.xml} file
+     * or at the directory that contains one; relative entries are resolved
+     * against {@code rootPath}. Entries that do not resolve to an existing
+     * {@code pom.xml} are skipped with a warning rather than silently falling
+     * back to scanning an unrelated parent tree.
+     */
+    static List<Path> resolveCustomMavenRoots(Path rootPath, String pomPathProp) {
+        List<Path> roots = new ArrayList<>();
+        for (String entry : pomPathProp.split(File.pathSeparator)) {
+            String trimmed = entry.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            Path configured = Path.of(trimmed);
+            if (!configured.isAbsolute()) {
+                configured = rootPath.resolve(configured);
+            }
+            configured = configured.normalize();
+            Path pomFile = Files.isDirectory(configured) ? configured.resolve("pom.xml") : configured;
+            if (!Files.isRegularFile(pomFile)) {
+                logger.warning("Configured drools.lsp.maven.pomPath does not point to an existing pom.xml, skipping: " + configured);
+                continue;
+            }
+            roots.add(pomFile.getParent());
+        }
+        return roots;
+    }
+
     @Override
     public CompletableFuture<InitializeResult> initialize(InitializeParams params) {
         final InitializeResult initializeResult = new InitializeResult(new ServerCapabilities());
@@ -161,27 +195,37 @@ public class DroolsLspServer implements LanguageServer, LanguageClientAware {
             CompletableFuture.runAsync(() -> {
                 try {
                     Path rootPath = Paths.get(URI.create(rootUri));
+
+                    // Resolve against the configured custom POM root(s) when set,
+                    // otherwise the workspace root.
                     String pomPathProp = System.getProperty("drools.lsp.maven.pomPath");
-                    Set<Path> resolved;
+                    List<Path> mavenRoots;
                     if (pomPathProp != null && !pomPathProp.isBlank()) {
-                        resolved = new LinkedHashSet<>();
-                        for (String entry : pomPathProp.split(File.pathSeparator)) {
-                            String trimmed = entry.trim();
-                            if (trimmed.isEmpty()) {
-                                continue;
-                            }
-                            Path customPom = Path.of(trimmed);
-                            if (!customPom.isAbsolute()) {
-                                customPom = rootPath.resolve(customPom);
-                            }
-                            Path mavenRoot = customPom.getParent() != null ? customPom.getParent() : rootPath;
-                            final Path logPom = customPom.normalize();
-                            logger.fine(() -> "Using custom Maven POM: " + logPom);
-                            resolved.addAll(MavenClasspathResolver.resolve(mavenRoot));
-                        }
+                        mavenRoots = resolveCustomMavenRoots(rootPath, pomPathProp);
+                        mavenRoots.forEach(root -> logger.fine(() -> "Using custom Maven root: " + root));
                     } else {
                         logger.fine(() -> "Resolving Maven classpath from: " + rootPath);
-                        resolved = MavenClasspathResolver.resolve(rootPath);
+                        mavenRoots = List.of(rootPath);
+                    }
+
+                    // Publish the project's own compiled classes first. This only
+                    // scans the filesystem (no mvn), so type-name completion is
+                    // available within milliseconds rather than waiting on the
+                    // dependency-JAR resolution below — which shells out to mvn and
+                    // can take many seconds.
+                    Set<Path> outputDirs = new LinkedHashSet<>();
+                    for (Path mavenRoot : mavenRoots) {
+                        outputDirs.addAll(MavenClasspathResolver.resolveBuildOutputDirs(mavenRoot));
+                    }
+                    buildOutputDirs = outputDirs;
+                    textService.setClassIndex(ClassIndex.build(outputDirs));
+
+                    // Then resolve the full classpath (dependency JARs via mvn) and
+                    // merge, so member hover and field completion over dependencies
+                    // become available too.
+                    Set<Path> resolved = new LinkedHashSet<>();
+                    for (Path mavenRoot : mavenRoots) {
+                        resolved.addAll(MavenClasspathResolver.resolve(mavenRoot));
                     }
                     setResolvedClasspath(resolved);
                     ClassIndex outputIndex = ClassIndex.build(buildOutputDirs);
