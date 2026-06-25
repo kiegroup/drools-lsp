@@ -28,10 +28,7 @@ public class Main {
         try {
             Level level = Level.parse(levelName);
             Logger.getLogger("org.drools").setLevel(level);
-            // Also set the root handler level so records aren't filtered upstream.
-            Logger root = Logger.getLogger("");
-            root.setLevel(level);
-            for (var handler : root.getHandlers()) {
+            for (var handler : Logger.getLogger("").getHandlers()) {
                 handler.setLevel(level);
             }
         } catch (IllegalArgumentException e) {
