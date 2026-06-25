@@ -1,8 +1,10 @@
 package org.drools.lsp.server;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 
 import org.drools.completion.ClassIndex;
@@ -104,6 +106,50 @@ class DroolsLspServerTest {
         ClassIndex indexAfter = server.getTextDocumentService().getClassIndexForTest();
         assertThat(indexAfter.getMatching("Foo")).contains("com.example.Foo");
         assertThat(indexAfter.getMatching("Or")).contains("com.acme.Order");
+    }
+
+    @Test
+    void resolveCustomMavenRootsAcceptsPomFile() throws IOException {
+        Files.writeString(tempDir.resolve("pom.xml"), "<project/>");
+
+        List<Path> roots = DroolsLspServer.resolveCustomMavenRoots(tempDir, "pom.xml");
+
+        assertThat(roots).containsExactly(tempDir);
+    }
+
+    @Test
+    void resolveCustomMavenRootsAcceptsDirectoryContainingPom() throws IOException {
+        Path module = tempDir.resolve("module-a");
+        Files.createDirectories(module);
+        Files.writeString(module.resolve("pom.xml"), "<project/>");
+
+        // Pointing at the directory (not the pom.xml itself) resolves to that
+        // directory, not its parent.
+        List<Path> roots = DroolsLspServer.resolveCustomMavenRoots(tempDir, "module-a");
+
+        assertThat(roots).containsExactly(module);
+    }
+
+    @Test
+    void resolveCustomMavenRootsSkipsMissingAndDirectoriesWithoutPom() throws IOException {
+        Files.createDirectories(tempDir.resolve("empty-dir"));
+
+        List<Path> roots = DroolsLspServer.resolveCustomMavenRoots(
+            tempDir, "does-not-exist.xml" + File.pathSeparator + "empty-dir");
+
+        assertThat(roots).isEmpty();
+    }
+
+    @Test
+    void resolveCustomMavenRootsHandlesMultipleEntriesSkippingInvalidOnes() throws IOException {
+        Path module = tempDir.resolve("module-a");
+        Files.createDirectories(module);
+        Files.writeString(module.resolve("pom.xml"), "<project/>");
+
+        List<Path> roots = DroolsLspServer.resolveCustomMavenRoots(
+            tempDir, "module-a/pom.xml" + File.pathSeparator + "missing/pom.xml");
+
+        assertThat(roots).containsExactly(module);
     }
 
     private Path createClassDir(String classFilePath) throws IOException {
