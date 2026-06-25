@@ -13,21 +13,34 @@ import * as net from "net";
 
 let languageClient: LanguageClient | undefined;
 
+// Debug mode is selected by the LSDEBUG env var; it switches the server transport
+// to a socket (below) and enables log.debug output.
+const DEBUG_MODE = process.env.LSDEBUG === 'true';
+
+// Single output channel shared by the extension's own logging and the language
+// client's server/trace output, so everything lands in one "DRL Language Server" panel.
+let channel: vscode.OutputChannel | undefined;
+const log = {
+    info: (msg: string) => channel?.appendLine('INFO: ' + msg),
+    warn: (msg: string) => channel?.appendLine('WARNING: ' + msg),
+    error: (msg: string) => channel?.appendLine('ERROR: ' + msg),
+    debug: (msg: string) => { if (DEBUG_MODE) { channel?.appendLine('DEBUG: ' + msg); } },
+};
+
 export function activate(context: vscode.ExtensionContext) {
-    console.log('on activate, your extension "drl"....');
-    let serverOptions: ServerOptions  | undefined = undefined;
+    channel = vscode.window.createOutputChannel('DRL Language Server');
+    context.subscriptions.push(channel);
 
-    const DEBUG_MODE = process.env.LSDEBUG;
+    log.info('Activating extension "DRL Language Server"....');
+    let serverOptions: ServerOptions | undefined = undefined;
 
-    console.log('DEBUG_MODE ' + DEBUG_MODE);
-
-    if (DEBUG_MODE === 'true') {
-        console.log('Starting in debug mode');
+    if (DEBUG_MODE) {
+        log.debug('Starting in debug mode');
         let connectionInfo = {
             port: 9925,
             host: "127.0.0.1"
         };
-        console.log('connectionInfo ' + connectionInfo);
+        log.debug('connectionInfo ' + JSON.stringify(connectionInfo));
         serverOptions = () => {
             // Connect to language server via socket
             let socket = net.connect(connectionInfo);
@@ -36,11 +49,8 @@ export function activate(context: vscode.ExtensionContext) {
                 reader: socket
             };
             return Promise.resolve(result);
-
         };
     } else {
-        console.log('Starting without debug');
-
         const javaHome = getJavaHome();
 
         let executable: string = `java`;
@@ -48,19 +58,27 @@ export function activate(context: vscode.ExtensionContext) {
         if (javaHome) {
             // If java home is available, compose a path
             executable = path.join(javaHome, 'bin', 'java');
+            log.debug('java executable path : ' + executable);
         } else {
-            console.warn('java home is not found. Invoking java without path.');
+            log.warn('java home is not found. Invoking java without path.');
         }
 
         // path to the launcher.jar
         let serverJar = path.join(__dirname, "..", 'lib', 'drools-lsp-server-jar-with-dependencies.jar');
         if (fs.existsSync(serverJar)) {
-            console.log(`${serverJar} exists`);
+            log.debug('server jar path : ' + serverJar);
         } else {
-            console.error(`${serverJar} does not exist : The extension won't work`);
+            log.error(`${serverJar} not found`);
             return;
         }
+
+        const config = vscode.workspace.getConfiguration();
         const args: string[] = [];
+
+        const logLevel: string | undefined = config.get('drools.lsp.logLevel');
+        if (logLevel) {
+            args.push(`-Ddrools.lsp.logLevel=${logLevel}`);
+        }
 
         const lintProps = [
             'drools.lsp.lint.missingEnd',
@@ -69,7 +87,6 @@ export function activate(context: vscode.ExtensionContext) {
             'drools.lsp.lint.unbalancedParens',
             'drools.lsp.lint.mvelPropertyAccess',
         ];
-        const config = vscode.workspace.getConfiguration();
         for (const prop of lintProps) {
             const value: string | undefined = config.get(prop);
             if (value !== undefined) {
@@ -85,6 +102,20 @@ export function activate(context: vscode.ExtensionContext) {
             args.push(`-Ddrools.lsp.inlayHints.enabled=${inlayHintsEnabled}`);
         }
 
+        // Custom Maven POM(s) for classpath resolution — a single path or a list,
+        // each absolute or workspace-relative. Joined with the OS path separator
+        // into one JVM arg; empty means pom.xml at the workspace root.
+        const pomPathSetting = config.get<string | string[]>('drools.lsp.maven.pomPath');
+        const pomPaths = (Array.isArray(pomPathSetting) ? pomPathSetting : (pomPathSetting ? [pomPathSetting] : []))
+            .map(p => p.trim())
+            .filter(p => p.length > 0);
+        if (pomPaths.length > 0) {
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const resolved = pomPaths.map(p =>
+                (workspaceRoot && !path.isAbsolute(p)) ? path.join(workspaceRoot, p) : p);
+            args.push(`-Ddrools.lsp.maven.pomPath=${resolved.join(path.delimiter)}`);
+        }
+
         args.push('-jar', serverJar);
 
         serverOptions = {
@@ -95,29 +126,25 @@ export function activate(context: vscode.ExtensionContext) {
     }
 
     if (serverOptions) {
-        console.log('serverOptions ' + serverOptions);
-        // Options to control the language client
+        log.info('Starting language client');
         let clientOptions: LanguageClientOptions = {
             documentSelector: [{scheme: 'file', language: 'drools'}],
             synchronize: {
                 fileEvents: vscode.workspace.createFileSystemWatcher('**/target/classes/**/*.class')
-            }
+            },
+            outputChannel: channel
         };
-        // Create and start the language client. In vscode-languageclient v8+,
-        // start() returns a Promise<void> (not a Disposable); the client is torn
-        // down via stop() in deactivate() below, which keeps it out of
-        // context.subscriptions so it isn't disposed twice.
         languageClient = new LanguageClient('Drools', 'DRL Language Server', serverOptions, clientOptions);
         languageClient.start();
 
-        console.log('Congratulations, your extension "drl" is now active!');
+        log.info('DRL Language Server activated.');
     }
 }
 
 // this method is called when your extension is deactivated. Returning the
 // stop() promise lets VSCode await a clean language-server shutdown.
 export function deactivate(): Thenable<void> | undefined {
-	console.log('Your extension "drl" is now deactivated!');
+	log.info('DRL Language Server deactivated.');
 	if (!languageClient) {
 		return undefined;
 	}
@@ -130,23 +157,23 @@ function getJavaHome() : string | undefined {
 
     javaHome = vscode.workspace.getConfiguration().get('java.home');
     if (javaHome) {
-        console.log('java.home from workspace configuration : ' + javaHome);
+        log.debug('java.home from workspace configuration : ' + javaHome);
         return javaHome;
     }
 
     // GHA_JAVA_HOME is to specify JAVA_HOME for Github Action (MacOS changes JAVA_HOME internally)
     javaHome = process.env.GHA_JAVA_HOME;
     if (javaHome) {
-        console.log('GHA_JAVA_HOME from process env : ' + javaHome);
+        log.debug('GHA_JAVA_HOME from process env : ' + javaHome);
         return javaHome;
     }
 
     javaHome = process.env.JAVA_HOME;
     if (javaHome) {
-        console.log('JAVA_HOME from process env : ' + javaHome);
+        log.debug('JAVA_HOME from process env : ' + javaHome);
         return javaHome;
     }
 
-    console.log('java home is not found');
+    log.warn('JAVA_HOME not found');
     return javaHome; // undefined
 }

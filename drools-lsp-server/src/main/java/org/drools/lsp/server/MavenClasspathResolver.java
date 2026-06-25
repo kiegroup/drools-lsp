@@ -17,6 +17,8 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class MavenClasspathResolver {
 
@@ -55,7 +57,60 @@ public class MavenClasspathResolver {
         return dirs;
     }
 
+    // Matches <module>some/path</module> entries in a Maven POM.
+    private static final Pattern MODULE_ELEMENT = Pattern.compile("<module>([^<]+)</module>");
+
+    /**
+     * Returns the pom.xml files whose modules form the classpath.
+     *
+     * <p>When a root {@code pom.xml} exists, resolution is scoped to it: the root
+     * plus any modules it explicitly declares. Walking the full workspace tree is
+     * intentionally avoided in that case — it would pull in adjacent projects'
+     * dependencies and contaminate the class index.
+     *
+     * <p>When there is no root {@code pom.xml} (a pom-less or non-standard
+     * layout), it falls back to scanning the tree for pom.xml files (skipping
+     * {@code target/} and hidden directories) so completion/hover still get a
+     * best-effort classpath.
+     */
     static List<Path> findPomFiles(Path rootDir) {
+        Path rootPom = rootDir.resolve("pom.xml");
+        if (!Files.exists(rootPom)) {
+            logger.fine(() -> "No pom.xml at " + rootDir + "; falling back to tree scan");
+            return walkForPomFiles(rootDir);
+        }
+
+        List<Path> result = new ArrayList<>();
+        result.add(rootPom);
+
+        // Read declared <module> entries from the root POM and add each module's
+        // pom.xml. Handles multi-module projects without recursing into unrelated
+        // sibling directories.
+        String pomContent;
+        try {
+            pomContent = Files.readString(rootPom);
+        } catch (IOException e) {
+            logger.log(Level.WARNING, "Failed to read root pom.xml: " + rootPom, e);
+            return result;
+        }
+        Matcher m = MODULE_ELEMENT.matcher(pomContent);
+        while (m.find()) {
+            String modulePath = m.group(1).trim();
+            Path modulePom = rootDir.resolve(modulePath).resolve("pom.xml");
+            if (Files.exists(modulePom)) {
+                result.add(modulePom);
+            } else {
+                logger.warning(() -> "Declared module pom.xml not found: " + modulePom);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Fallback used when no root {@code pom.xml} is present: walks {@code rootDir}
+     * for every pom.xml, skipping {@code target/} and hidden directories.
+     */
+    private static List<Path> walkForPomFiles(Path rootDir) {
         List<Path> result = new ArrayList<>();
         try {
             Files.walkFileTree(rootDir, new SimpleFileVisitor<>() {
