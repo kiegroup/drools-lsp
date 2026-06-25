@@ -135,7 +135,6 @@ export function activate(context: vscode.ExtensionContext) {
             outputChannel: channel
         };
         languageClient = new LanguageClient('Drools', 'DRL Language Server', serverOptions, clientOptions);
-        context.subscriptions.push(languageClient);  // client is Disposable in v8+; stops on deactivate
         languageClient.start();
 
         log.info('DRL Language Server activated.');
