@@ -310,7 +310,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
             }
             String uri = params.getTextDocument().getUri();
             Path documentPath = toPath(uri);
-            return DRLTypeHierarchyHelper.prepare(sourcesMap.get(uri), params.getPosition(), uri,
+            return DRLTypeHierarchyHelper.prepare(textForUri(uri), params.getPosition(), uri,
                     openSiblings(documentPath), classIndex, server.getBuildOutputDirs());
         });
     }
@@ -322,9 +322,13 @@ public class DroolsLspDocumentService implements TextDocumentService {
                 return Collections.<TypeHierarchyItem>emptyList();
             }
             TypeHierarchyItem item = params.getItem();
-            return DRLTypeHierarchyHelper.supertypes(item, textForUri(item.getUri()),
-                    openSiblings(toPath(item.getUri())), classIndex, classMemberIndex,
-                    server.getBuildOutputDirs());
+            // Classpath items resolve via reflection and ignore the file text /
+            // sibling buffers, so skip the (potentially large .java) disk read.
+            boolean classpath = DRLTypeHierarchyHelper.isClasspathItem(item);
+            return DRLTypeHierarchyHelper.supertypes(item,
+                    classpath ? null : textForUri(item.getUri()),
+                    classpath ? Collections.emptyMap() : openSiblings(toPath(item.getUri())),
+                    classIndex, classMemberIndex, server.getBuildOutputDirs());
         });
     }
 
@@ -335,8 +339,12 @@ public class DroolsLspDocumentService implements TextDocumentService {
                 return Collections.<TypeHierarchyItem>emptyList();
             }
             TypeHierarchyItem item = params.getItem();
-            return DRLTypeHierarchyHelper.subtypes(item, textForUri(item.getUri()),
-                    openSiblings(toPath(item.getUri())));
+            // Classpath subtypes aren't enumerable here (the helper returns empty),
+            // so avoid the disk read and sibling scan for those.
+            boolean classpath = DRLTypeHierarchyHelper.isClasspathItem(item);
+            return DRLTypeHierarchyHelper.subtypes(item,
+                    classpath ? null : textForUri(item.getUri()),
+                    classpath ? Collections.emptyMap() : openSiblings(toPath(item.getUri())));
         });
     }
 
