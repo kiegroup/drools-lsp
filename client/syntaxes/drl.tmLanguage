@@ -54,7 +54,7 @@
 			<key>comment</key>
 			<string>Java classes</string>
 			<key>match</key>
-			<string>\b([A-Z][A-Za-z_]+)\b</string>
+			<string>\b([A-Z][A-Za-z0-9_]+)\b</string>
 			<key>name</key>
 			<string>support.type.source.drools</string>
 		</dict>
