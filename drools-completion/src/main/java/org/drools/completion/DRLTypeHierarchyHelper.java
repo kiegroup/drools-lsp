@@ -219,6 +219,15 @@ public final class DRLTypeHierarchyHelper {
                          new Position(type.nameLine, type.nameCol + type.name.length()));
     }
 
+    /**
+     * True when {@code item} is a classpath type (an FQCN is stashed in
+     * {@code data}). Such items resolve via reflection and ignore the file text
+     * and sibling buffers, so callers can skip computing those.
+     */
+    public static boolean isClasspathItem(TypeHierarchyItem item) {
+        return fqcnData(item) != null;
+    }
+
     /** The classpath FQCN stashed in {@code data}, or {@code null} for a declare item. */
     private static String fqcnData(TypeHierarchyItem item) {
         Object data = item.getData();
