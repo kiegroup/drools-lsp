@@ -32,6 +32,21 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(channel);
 
     log.info('Activating extension "DRL Language Server"....');
+
+    context.subscriptions.push(vscode.commands.registerCommand(
+        'drools.peekReferences',
+        (uri: string, position: { line: number; character: number },
+         locations: Array<{ uri: string; range: { start: { line: number; character: number };
+                                                   end: { line: number; character: number } } }>) => {
+            const target = vscode.Uri.parse(uri);
+            const at = new vscode.Position(position.line, position.character);
+            const locs = (locations ?? []).map(l => new vscode.Location(
+                vscode.Uri.parse(l.uri),
+                new vscode.Range(l.range.start.line, l.range.start.character,
+                                 l.range.end.line, l.range.end.character)));
+            return vscode.commands.executeCommand('editor.action.showReferences', target, at, locs);
+        }));
+
     let serverOptions: ServerOptions | undefined = undefined;
 
     if (DEBUG_MODE) {

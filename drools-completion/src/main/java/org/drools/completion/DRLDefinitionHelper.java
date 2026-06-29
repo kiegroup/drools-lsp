@@ -6,7 +6,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
 
-import org.drools.drl.parser.antlr4.DRL10Parser;
+import org.antlr.v4.runtime.Token;
+import org.drools.drl.parser.antlr4.DRL10Lexer;
 import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
@@ -62,9 +63,14 @@ public final class DRLDefinitionHelper {
         if (word.isEmpty() || !Character.isJavaIdentifierStart(word.charAt(0))) {
             return List.of();
         }
+        // Parse the current document once; the steps below reuse this parse.
+        ParsedDrl parsed = ParsedDrl.of(text);
+        if (caretInCommentOrString(parsed, position)) {
+            return List.of();
+        }
 
         // 1. declare blocks in this document.
-        for (DeclaredType declared : DRLDeclaredTypeParser.parseDeclaredTypes(text)) {
+        for (DeclaredType declared : parsed.declaredTypes()) {
             if (word.equals(declared.name)) {
                 return List.of(new Location(uri, nameRange(declared, word)));
             }
@@ -77,7 +83,7 @@ public final class DRLDefinitionHelper {
         }
 
         // 3. Java sources by Maven convention.
-        String fqcn = resolveFqcn(text, word, classIndex);
+        String fqcn = resolveFqcn(parsed, word, classIndex);
         if (fqcn == null) {
             return List.of();
         }
@@ -121,8 +127,17 @@ public final class DRLDefinitionHelper {
     /** Resolves {@code word} to an FQCN from {@code text}'s imports + class index. Shared with type hierarchy. */
     static String resolveFqcn(String text, String word, ClassIndex classIndex) {
         try {
-            DRL10Parser parser = DRLParsers.silent(text);
-            return DRLCompletionHelper.resolveFqcn(word, word, parser.compilationUnit(), classIndex);
+            return resolveFqcn(ParsedDrl.of(text), word, classIndex);
+        } catch (Exception e) {
+            logger.fine(() -> "FQCN resolution failed for " + word + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** As {@link #resolveFqcn(String, String, ClassIndex)}, reusing an existing parse of the document. */
+    static String resolveFqcn(ParsedDrl parsed, String word, ClassIndex classIndex) {
+        try {
+            return DRLCompletionHelper.resolveFqcn(word, word, parsed.compilationUnit, classIndex);
         } catch (Exception e) {
             logger.fine(() -> "FQCN resolution failed for " + word + ": " + e.getMessage());
             return null;
@@ -149,7 +164,72 @@ public final class DRLDefinitionHelper {
         return start < end ? line.substring(start, end) : "";
     }
 
+    /**
+     * The range of the identifier ({@code [A-Za-z0-9_$]+}) around the caret, or
+     * {@code null} when the caret is not on one. Same expansion as
+     * {@link #wordAt}; used by rename to mark the editable span. Shared with
+     * {@link DRLRenameHelper}.
+     */
+    static Range wordRangeAt(String text, Position position) {
+        if (text == null || position == null) {
+            return null;
+        }
+        String[] lines = text.split("\r?\n", -1);
+        if (position.getLine() < 0 || position.getLine() >= lines.length) {
+            return null;
+        }
+        String line = lines[position.getLine()];
+        int col = Math.min(Math.max(position.getCharacter(), 0), line.length());
+
+        int start = col;
+        while (start > 0 && isIdentifierChar(line.charAt(start - 1))) {
+            start--;
+        }
+        int end = col;
+        while (end < line.length() && isIdentifierChar(line.charAt(end))) {
+            end++;
+        }
+        if (start >= end) {
+            return null;
+        }
+        return new Range(new Position(position.getLine(), start), new Position(position.getLine(), end));
+    }
+
     private static boolean isIdentifierChar(char c) {
         return Character.isLetterOrDigit(c) || c == '_' || c == '$';
+    }
+
+    /**
+     * True when the caret sits inside a comment or string-literal token, where an
+     * identifier-looking word is not an actual symbol occurrence. Shared by
+     * go-to-definition, find-references, and rename so they don't act on a name
+     * that merely appears in prose. Reuses the document's already-built token
+     * stream — no extra parse or lex. Best-effort: a caret that doesn't resolve
+     * to a token is treated as code, returning {@code false}.
+     */
+    static boolean caretInCommentOrString(ParsedDrl parsed, Position position) {
+        if (parsed == null || position == null) {
+            return false;
+        }
+        Token token = parsed.tokenAt(position);
+        return token != null && isCommentOrString(token.getType());
+    }
+
+    /** Lexer token types carrying comment or string-literal text, on both the LHS and the RHS consequence. */
+    private static boolean isCommentOrString(int tokenType) {
+        switch (tokenType) {
+            case DRL10Lexer.COMMENT:
+            case DRL10Lexer.LINE_COMMENT:
+            case DRL10Lexer.STRING_LITERAL:
+            case DRL10Lexer.DRL_STRING_LITERAL:
+            case DRL10Lexer.TEXT_BLOCK:
+            case DRL10Lexer.CHAR_LITERAL:
+            case DRL10Lexer.RHS_COMMENT:
+            case DRL10Lexer.RHS_LINE_COMMENT:
+            case DRL10Lexer.RHS_STRING_LITERAL:
+                return true;
+            default:
+                return false;
+        }
     }
 }

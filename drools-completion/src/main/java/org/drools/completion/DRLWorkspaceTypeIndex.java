@@ -71,10 +71,20 @@ public final class DRLWorkspaceTypeIndex {
      */
     public static Map<String, String> buildLinkTargets(String text, Path documentPath,
                                                         Map<Path, String> openFiles) {
+        return buildLinkTargets(DRLDeclaredTypeParser.parseDeclaredTypes(text), text,
+                documentPath, openFiles);
+    }
+
+    /**
+     * As {@link #buildLinkTargets(String, Path, Map)}, reusing the already-parsed
+     * current-document declares instead of re-parsing {@code text}.
+     */
+    public static Map<String, String> buildLinkTargets(List<DeclaredType> currentDocTypes, String text,
+                                                        Path documentPath, Map<Path, String> openFiles) {
         Map<String, String> targets = new HashMap<>();
         if (documentPath != null && text != null && !text.isEmpty()) {
             String uri = documentPath.toUri().toString();
-            for (DeclaredType t : DRLDeclaredTypeParser.parseDeclaredTypes(text)) {
+            for (DeclaredType t : currentDocTypes) {
                 addTarget(targets, t, uri);
             }
         }
@@ -94,8 +104,20 @@ public final class DRLWorkspaceTypeIndex {
         if (name == null || name.isEmpty()) {
             return null;
         }
+        return docFor(name, DRLDeclaredTypeParser.parseDeclaredTypes(text), text, documentPath, openFiles);
+    }
+
+    /**
+     * As {@link #docFor(String, String, Path, Map)}, reusing the already-parsed
+     * current-document declares for the layer-1 check instead of re-parsing.
+     */
+    public static String docFor(String name, List<DeclaredType> currentDocTypes, String text,
+                                Path documentPath, Map<Path, String> openFiles) {
+        if (name == null || name.isEmpty()) {
+            return null;
+        }
         // Layer 1: current document.
-        if (declaresType(text, name)) {
+        if (containsName(currentDocTypes, name)) {
             return DRLDocCommentParser.docFor(text, name);
         }
         if (documentPath == null) {
@@ -174,6 +196,48 @@ public final class DRLWorkspaceTypeIndex {
     }
 
     /**
+     * Visits each sibling {@code .drl} file reachable through the workspace
+     * layers — open unsaved buffers first (their editor text shadows disk),
+     * then on-disk siblings not shadowed by a buffer — passing the file's URI
+     * and its <em>current</em> text to {@code sink}. The current document is
+     * <em>not</em> included; callers scan that themselves. Used by
+     * find-references / rename, which need each sibling's raw text rather than
+     * its parsed declares.
+     */
+    static void forEachSiblingFile(Path documentPath, Map<Path, String> openFiles,
+                                   BiConsumer<String, String> sink) {
+        if (documentPath == null) {
+            return;
+        }
+        Path docNorm = documentPath.toAbsolutePath().normalize();
+        Path dir = docNorm.getParent();
+        Set<Path> shadowed = new HashSet<>();
+
+        // Layer 2: open unsaved siblings (same directory, not the current file).
+        if (openFiles != null) {
+            for (Map.Entry<Path, String> e : openFiles.entrySet()) {
+                Path p = normalizedSibling(e.getKey(), docNorm, dir);
+                if (p == null) {
+                    continue;
+                }
+                shadowed.add(p);
+                sink.accept(p.toUri().toString(), e.getValue());
+            }
+        }
+
+        // Layer 3: on-disk siblings not shadowed by an open buffer.
+        for (Path sibling : WorkspaceSiblingResolvers.active().resolveSiblings(documentPath)) {
+            if (shadowed.contains(sibling.toAbsolutePath().normalize())) {
+                continue;
+            }
+            String content = readFileSilently(sibling);
+            if (content != null) {
+                sink.accept(sibling.toUri().toString(), content);
+            }
+        }
+    }
+
+    /**
      * Returns the normalized form of {@code candidate} when it is a same-directory
      * sibling of {@code docNorm} (and not the document itself), else {@code null}.
      */
@@ -205,9 +269,15 @@ public final class DRLWorkspaceTypeIndex {
         if (text == null || text.isEmpty()) {
             return false;
         }
-        for (DeclaredType t : DRLDeclaredTypeParser.parseDeclaredTypes(text)) {
-            if (name.equals(t.name)) {
-                return true;
+        return containsName(DRLDeclaredTypeParser.parseDeclaredTypes(text), name);
+    }
+
+    private static boolean containsName(List<DeclaredType> types, String name) {
+        if (types != null) {
+            for (DeclaredType t : types) {
+                if (name.equals(t.name)) {
+                    return true;
+                }
             }
         }
         return false;

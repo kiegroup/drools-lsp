@@ -1,5 +1,7 @@
 package org.drools.completion;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.RecognitionException;
@@ -29,6 +31,13 @@ final class DRLParsers {
         }
     };
 
+    /**
+     * Counts parser constructions. Lets tests (and ad-hoc profiling) assert that
+     * a single editor operation parses the current document once rather than
+     * re-parsing it in each helper.
+     */
+    private static final AtomicLong PARSE_COUNT = new AtomicLong();
+
     private DRLParsers() {
     }
 
@@ -38,6 +47,7 @@ final class DRLParsers {
      * {@code parser.compilationUnit()}.
      */
     static DRL10Parser silent(String text) {
+        PARSE_COUNT.incrementAndGet();
         DRL10Parser parser = DRLParserHelper.createDrlParser(text);
         Lexer lexer = (Lexer) parser.getTokenStream().getTokenSource();
         lexer.removeErrorListeners();
@@ -45,5 +55,15 @@ final class DRLParsers {
         parser.removeErrorListeners();
         parser.addErrorListener(SILENT);
         return parser;
+    }
+
+    /** Number of parsers built since the last {@link #resetParseCount()}. */
+    static long parseCount() {
+        return PARSE_COUNT.get();
+    }
+
+    /** Resets the parser-construction counter; call before a measured operation. */
+    static void resetParseCount() {
+        PARSE_COUNT.set(0);
     }
 }

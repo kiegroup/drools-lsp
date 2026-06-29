@@ -15,7 +15,13 @@ import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.PrepareRenameParams;
+import org.eclipse.lsp4j.ReferenceContext;
+import org.eclipse.lsp4j.ReferenceParams;
+import org.eclipse.lsp4j.RenameParams;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
+import org.eclipse.lsp4j.TextEdit;
+import org.eclipse.lsp4j.WorkspaceEdit;
 import org.eclipse.lsp4j.TypeHierarchyItem;
 import org.eclipse.lsp4j.TypeHierarchyPrepareParams;
 import org.eclipse.lsp4j.TypeHierarchySubtypesParams;
@@ -328,6 +334,88 @@ class DroolsLspDocumentServiceTest {
 
         assertThat(supers).hasSize(1);
         assertThat(supers.get(0).getName()).isEqualTo("Animal");
+    }
+
+    @Test
+    void renameRewritesDeclaredTypeUses() throws Exception {
+        String drl = """
+                package demo;
+
+                declare Person
+                  name : String
+                end
+
+                rule R
+                  when
+                    Person( name == "x" )
+                  then
+                    insert(new Person());
+                end
+                """;
+        DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+        RenameParams params = new RenameParams();
+        params.setTextDocument(new TextDocumentIdentifier("myDocument"));
+        params.setPosition(new Position(8, 5)); // caret on the pattern "Person"
+        params.setNewName("Customer");
+
+        WorkspaceEdit edit = service.rename(params).get();
+
+        assertThat(edit).isNotNull();
+        List<TextEdit> edits = edit.getChanges().get("myDocument");
+        assertThat(edits).hasSize(3); // declare, pattern, RHS new
+        assertThat(edits).allSatisfy(e -> assertThat(e.getNewText()).isEqualTo("Customer"));
+    }
+
+    @Test
+    void prepareRenameRejectsClasspathType() throws Exception {
+        String drl = """
+                package demo;
+                import org.example.Pet;
+                rule R
+                  when
+                    Pet( )
+                  then
+                end
+                """;
+        DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+        PrepareRenameParams params = new PrepareRenameParams();
+        params.setTextDocument(new TextDocumentIdentifier("myDocument"));
+        params.setPosition(new Position(4, 5)); // caret on "Pet"
+
+        // null → the client refuses the rename.
+        assertThat(service.prepareRename(params).get()).isNull();
+    }
+
+    @Test
+    void referencesFindsDeclaredTypeUses() throws Exception {
+        String drl = """
+                package demo;
+
+                declare Person
+                  name : String
+                end
+
+                rule R
+                  when
+                    Person( name == "x" )
+                  then
+                    insert(new Person());
+                end
+                """;
+        DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+        ReferenceParams params = new ReferenceParams();
+        params.setTextDocument(new TextDocumentIdentifier("myDocument"));
+        params.setPosition(new Position(8, 5)); // caret on the pattern "Person"
+        params.setContext(new ReferenceContext(true));
+
+        List<? extends Location> refs = service.references(params).get();
+
+        // declare(2), pattern(8), RHS new(10)
+        assertThat(refs).hasSize(3);
+        assertThat(refs).allSatisfy(l -> assertThat(l.getUri()).isEqualTo("myDocument"));
     }
 
     @Test

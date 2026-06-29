@@ -19,7 +19,10 @@ import java.util.logging.Logger;
 import org.drools.completion.ClassIndex;
 import org.drools.completion.ClassMemberIndex;
 import org.drools.completion.DRLCompletionHelper;
+import org.drools.completion.DRLCodeLensHelper;
 import org.drools.completion.DRLDefinitionHelper;
+import org.drools.completion.DRLReferencesHelper;
+import org.drools.completion.DRLRenameHelper;
 import org.drools.completion.DRLDiagnosticHelper;
 import org.drools.completion.DRLDocumentSymbolHelper;
 import org.drools.completion.DRLFoldingRangeHelper;
@@ -31,6 +34,8 @@ import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.CodeAction;
 import org.eclipse.lsp4j.CodeActionKind;
 import org.eclipse.lsp4j.CodeActionParams;
+import org.eclipse.lsp4j.CodeLens;
+import org.eclipse.lsp4j.CodeLensParams;
 import org.eclipse.lsp4j.Command;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
@@ -58,6 +63,11 @@ import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.MessageParams;
 import org.eclipse.lsp4j.MessageType;
 import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.PrepareRenameDefaultBehavior;
+import org.eclipse.lsp4j.PrepareRenameParams;
+import org.eclipse.lsp4j.PrepareRenameResult;
+import org.eclipse.lsp4j.ReferenceParams;
+import org.eclipse.lsp4j.RenameParams;
 import org.eclipse.lsp4j.RelatedFullDocumentDiagnosticReport;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextEdit;
@@ -67,6 +77,7 @@ import org.eclipse.lsp4j.TypeHierarchySubtypesParams;
 import org.eclipse.lsp4j.TypeHierarchySupertypesParams;
 import org.eclipse.lsp4j.WorkspaceEdit;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
+import org.eclipse.lsp4j.jsonrpc.messages.Either3;
 import org.eclipse.lsp4j.services.TextDocumentService;
 
 public class DroolsLspDocumentService implements TextDocumentService {
@@ -358,6 +369,70 @@ public class DroolsLspDocumentService implements TextDocumentService {
                     uri, text, params.getPosition(), classIndex, server.getBuildOutputDirs(),
                     openSiblings(documentPath)));
             return Either.forLeft(definitions == null ? List.of() : definitions);
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<? extends Location>> references(ReferenceParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<Location>emptyList();
+            }
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            Path documentPath = toPath(uri);
+            boolean includeDeclaration =
+                    params.getContext() != null && params.getContext().isIncludeDeclaration();
+            return DRLReferencesHelper.references(uri, text, params.getPosition(),
+                    openSiblings(documentPath), classIndex, server.getBuildOutputDirs(),
+                    includeDeclaration);
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<? extends CodeLens>> codeLens(CodeLensParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<CodeLens>emptyList();
+            }
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            Path documentPath = toPath(uri);
+            return DRLCodeLensHelper.codeLenses(uri, text, openSiblings(documentPath),
+                    classIndex, server.getBuildOutputDirs());
+        });
+    }
+
+    @Override
+    public CompletableFuture<Either3<Range, PrepareRenameResult, PrepareRenameDefaultBehavior>>
+            prepareRename(PrepareRenameParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return null;
+            }
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            Path documentPath = toPath(uri);
+            DRLRenameHelper.Prepared prepared = DRLRenameHelper.prepare(uri, text, params.getPosition(),
+                    openSiblings(documentPath), classIndex, server.getBuildOutputDirs());
+            // null → the client refuses the rename (e.g. caret on a classpath type).
+            return prepared == null
+                    ? null
+                    : Either3.forSecond(new PrepareRenameResult(prepared.range, prepared.placeholder));
+        });
+    }
+
+    @Override
+    public CompletableFuture<WorkspaceEdit> rename(RenameParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return null;
+            }
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            Path documentPath = toPath(uri);
+            return DRLRenameHelper.rename(uri, text, params.getPosition(), params.getNewName(),
+                    openSiblings(documentPath), classIndex, server.getBuildOutputDirs());
         });
     }
 
