@@ -1,20 +1,12 @@
 package org.drools.completion;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
-import org.antlr.v4.runtime.BaseErrorListener;
-import org.antlr.v4.runtime.Lexer;
-import org.antlr.v4.runtime.RecognitionException;
-import org.antlr.v4.runtime.Recognizer;
 import org.drools.drl.parser.antlr4.DRL10Parser;
-import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
@@ -38,15 +30,6 @@ public final class DRLDefinitionHelper {
 
     private static final Logger logger =
             Logger.getLogger(DRLDefinitionHelper.class.getName());
-
-    /** Swallows ANTLR parse errors — incomplete documents are normal. */
-    private static final BaseErrorListener SILENT = new BaseErrorListener() {
-        @Override
-        public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol,
-                                int line, int charPositionInLine, String msg,
-                                RecognitionException e) {
-        }
-    };
 
     private DRLDefinitionHelper() {
     }
@@ -98,8 +81,8 @@ public final class DRLDefinitionHelper {
         if (fqcn == null) {
             return List.of();
         }
-        Location javaSource = javaSourceLocation(fqcn, buildOutputDirs);
-        return javaSource == null ? List.of() : List.of(javaSource);
+        JavaSourceLocator.Result javaSource = JavaSourceLocator.locate(fqcn, buildOutputDirs);
+        return javaSource == null ? List.of() : List.of(javaSource.location);
     }
 
     /**
@@ -135,71 +118,15 @@ public final class DRLDefinitionHelper {
         }
     }
 
-    private static String resolveFqcn(String text, String word, ClassIndex classIndex) {
+    /** Resolves {@code word} to an FQCN from {@code text}'s imports + class index. Shared with type hierarchy. */
+    static String resolveFqcn(String text, String word, ClassIndex classIndex) {
         try {
-            DRL10Parser parser = DRLParserHelper.createDrlParser(text);
-            Lexer lexer = (Lexer) parser.getTokenStream().getTokenSource();
-            lexer.removeErrorListeners();
-            lexer.addErrorListener(SILENT);
-            parser.removeErrorListeners();
-            parser.addErrorListener(SILENT);
+            DRL10Parser parser = DRLParsers.silent(text);
             return DRLCompletionHelper.resolveFqcn(word, word, parser.compilationUnit(), classIndex);
         } catch (Exception e) {
             logger.fine(() -> "FQCN resolution failed for " + word + ": " + e.getMessage());
             return null;
         }
-    }
-
-    /**
-     * Maps an FQCN whose {@code .class} file sits in a build-output
-     * directory to its conventional Maven source file, anchored at the type
-     * declaration when it can be found in the source text.
-     */
-    private static Location javaSourceLocation(String fqcn, Set<Path> buildOutputDirs) {
-        if (buildOutputDirs == null || buildOutputDirs.isEmpty()) {
-            return null;
-        }
-        String relClass = fqcn.replace('.', '/') + ".class";
-        String relJava = fqcn.replace('.', '/') + ".java";
-        String simpleName = fqcn.substring(fqcn.lastIndexOf('.') + 1);
-
-        for (Path outputDir : buildOutputDirs) {
-            if (!Files.isRegularFile(outputDir.resolve(relClass))) {
-                continue;
-            }
-            // <module>/target/classes → <module>
-            Path target = outputDir.getParent();
-            Path module = target == null ? null : target.getParent();
-            if (module == null) {
-                continue;
-            }
-            Path javaFile = module.resolve("src/main/java").resolve(relJava);
-            if (!Files.isRegularFile(javaFile)) {
-                continue;
-            }
-            return new Location(javaFile.toUri().toString(),
-                                declarationRange(javaFile, simpleName));
-        }
-        return null;
-    }
-
-    /** Finds the {@code class/interface/enum/record <Simple>} declaration line. */
-    private static Range declarationRange(Path javaFile, String simpleName) {
-        try {
-            Pattern decl = Pattern.compile(
-                    "\\b(?:class|interface|enum|record)\\s+(" + Pattern.quote(simpleName) + ")\\b");
-            List<String> lines = Files.readAllLines(javaFile);
-            for (int i = 0; i < lines.size(); i++) {
-                Matcher m = decl.matcher(lines.get(i));
-                if (m.find()) {
-                    return new Range(new Position(i, m.start(1)),
-                                     new Position(i, m.start(1) + simpleName.length()));
-                }
-            }
-        } catch (Exception e) {
-            logger.fine(() -> "Could not locate declaration in " + javaFile + ": " + e.getMessage());
-        }
-        return new Range(new Position(0, 0), new Position(0, 0));
     }
 
     /** Expands the identifier ({@code [A-Za-z0-9_$]+}) around the caret. */

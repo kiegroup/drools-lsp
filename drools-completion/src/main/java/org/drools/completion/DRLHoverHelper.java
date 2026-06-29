@@ -5,10 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
 
-import org.antlr.v4.runtime.BaseErrorListener;
-import org.antlr.v4.runtime.Lexer;
-import org.antlr.v4.runtime.RecognitionException;
-import org.antlr.v4.runtime.Recognizer;
 import org.drools.drl.parser.antlr4.DRL10Parser;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.Hover;
@@ -29,15 +25,6 @@ import org.eclipse.lsp4j.Position;
 public final class DRLHoverHelper {
 
     private static final Logger logger = Logger.getLogger(DRLHoverHelper.class.getName());
-
-    /** Swallows ANTLR parse errors — incomplete documents are normal. */
-    private static final BaseErrorListener SILENT = new BaseErrorListener() {
-        @Override
-        public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol,
-                                int line, int charPositionInLine, String msg,
-                                RecognitionException e) {
-        }
-    };
 
     private DRLHoverHelper() {
     }
@@ -87,7 +74,7 @@ public final class DRLHoverHelper {
         DRL10Parser.CompilationUnitContext compilationUnit;
         Integer nodeIndex;
         try {
-            parser = silentParser(text);
+            parser = DRLParsers.silent(text);
             compilationUnit = parser.compilationUnit();
             nodeIndex = DRLParserHelper.computeTokenIndex(
                     parser, position.getLine() + 1, position.getCharacter());
@@ -253,15 +240,5 @@ public final class DRLHoverHelper {
             offset++;
         }
         return Math.min(offset + position.getCharacter(), text.length());
-    }
-
-    private static DRL10Parser silentParser(String text) {
-        DRL10Parser parser = DRLParserHelper.createDrlParser(text);
-        Lexer lexer = (Lexer) parser.getTokenStream().getTokenSource();
-        lexer.removeErrorListeners();
-        lexer.addErrorListener(SILENT);
-        parser.removeErrorListeners();
-        parser.addErrorListener(SILENT);
-        return parser;
     }
 }

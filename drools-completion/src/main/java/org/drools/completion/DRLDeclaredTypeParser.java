@@ -11,12 +11,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
-import org.antlr.v4.runtime.BaseErrorListener;
-import org.antlr.v4.runtime.Lexer;
-import org.antlr.v4.runtime.RecognitionException;
-import org.antlr.v4.runtime.Recognizer;
 import org.drools.drl.parser.antlr4.DRL10Parser;
-import org.drools.drl.parser.antlr4.DRLParserHelper;
 
 /**
  * Extracts {@link DeclaredType}s ({@code declare} blocks, including declared
@@ -27,15 +22,6 @@ public final class DRLDeclaredTypeParser {
 
     private static final Logger logger =
             Logger.getLogger(DRLDeclaredTypeParser.class.getName());
-
-    /** Swallows ANTLR parse errors — partial/incomplete DRL is normal here. */
-    private static final BaseErrorListener SILENT = new BaseErrorListener() {
-        @Override
-        public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol,
-                                int line, int charPositionInLine, String msg,
-                                RecognitionException e) {
-        }
-    };
 
     private DRLDeclaredTypeParser() {
     }
@@ -99,12 +85,7 @@ public final class DRLDeclaredTypeParser {
             return types;
         }
         try {
-            DRL10Parser parser = DRLParserHelper.createDrlParser(text);
-            Lexer lexer = (Lexer) parser.getTokenStream().getTokenSource();
-            lexer.removeErrorListeners();
-            lexer.addErrorListener(SILENT);
-            parser.removeErrorListeners();
-            parser.addErrorListener(SILENT);
+            DRL10Parser parser = DRLParsers.silent(text);
             return extractFromCompilationUnit(parser.compilationUnit());
         } catch (Exception e) {
             logger.fine(() -> "Failed to parse DRL for declared types: " + e.getMessage());

@@ -1,6 +1,7 @@
 package org.drools.lsp.server;
 
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -25,6 +26,7 @@ import org.drools.completion.DRLFoldingRangeHelper;
 import org.drools.completion.DRLHoverHelper;
 import org.drools.completion.DRLInlayHintHelper;
 import org.drools.completion.DRLLintHelper;
+import org.drools.completion.DRLTypeHierarchyHelper;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.CodeAction;
 import org.eclipse.lsp4j.CodeActionKind;
@@ -59,6 +61,10 @@ import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.RelatedFullDocumentDiagnosticReport;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextEdit;
+import org.eclipse.lsp4j.TypeHierarchyItem;
+import org.eclipse.lsp4j.TypeHierarchyPrepareParams;
+import org.eclipse.lsp4j.TypeHierarchySubtypesParams;
+import org.eclipse.lsp4j.TypeHierarchySupertypesParams;
 import org.eclipse.lsp4j.WorkspaceEdit;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.services.TextDocumentService;
@@ -160,6 +166,23 @@ public class DroolsLspDocumentService implements TextDocumentService {
     private static Path toPath(String uri) {
         try {
             return Paths.get(URI.create(uri));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Current text for {@code uri}: the open buffer if present, else read from disk, else null. */
+    private String textForUri(String uri) {
+        String open = sourcesMap.get(uri);
+        if (open != null) {
+            return open;
+        }
+        Path p = toPath(uri);
+        if (p == null) {
+            return null;
+        }
+        try {
+            return Files.readString(p);
         } catch (Exception e) {
             return null;
         }
@@ -276,6 +299,52 @@ public class DroolsLspDocumentService implements TextDocumentService {
             }
             String text = sourcesMap.get(params.getTextDocument().getUri());
             return DRLFoldingRangeHelper.foldingRanges(text);
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<TypeHierarchyItem>> prepareTypeHierarchy(TypeHierarchyPrepareParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<TypeHierarchyItem>emptyList();
+            }
+            String uri = params.getTextDocument().getUri();
+            Path documentPath = toPath(uri);
+            return DRLTypeHierarchyHelper.prepare(textForUri(uri), params.getPosition(), uri,
+                    openSiblings(documentPath), classIndex, server.getBuildOutputDirs());
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<TypeHierarchyItem>> typeHierarchySupertypes(TypeHierarchySupertypesParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getItem() == null) {
+                return Collections.<TypeHierarchyItem>emptyList();
+            }
+            TypeHierarchyItem item = params.getItem();
+            // Classpath items resolve via reflection and ignore the file text /
+            // sibling buffers, so skip the (potentially large .java) disk read.
+            boolean classpath = DRLTypeHierarchyHelper.isClasspathItem(item);
+            return DRLTypeHierarchyHelper.supertypes(item,
+                    classpath ? null : textForUri(item.getUri()),
+                    classpath ? Collections.emptyMap() : openSiblings(toPath(item.getUri())),
+                    classIndex, classMemberIndex, server.getBuildOutputDirs());
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<TypeHierarchyItem>> typeHierarchySubtypes(TypeHierarchySubtypesParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getItem() == null) {
+                return Collections.<TypeHierarchyItem>emptyList();
+            }
+            TypeHierarchyItem item = params.getItem();
+            // Classpath subtypes aren't enumerable here (the helper returns empty),
+            // so avoid the disk read and sibling scan for those.
+            boolean classpath = DRLTypeHierarchyHelper.isClasspathItem(item);
+            return DRLTypeHierarchyHelper.subtypes(item,
+                    classpath ? null : textForUri(item.getUri()),
+                    classpath ? Collections.emptyMap() : openSiblings(toPath(item.getUri())));
         });
     }
 
