@@ -147,6 +147,15 @@ class DRLDefinitionHelperTest {
     }
 
     @Test
+    void findDefinitionsParsesTheCurrentDocumentOnce() {
+        // No siblings (non-file URI), so every parser built is for the current doc.
+        DRLParsers.resetParseCount();
+        DRLDefinitionHelper.findDefinitions(
+                "myDocument", DECLARE_DRL, new Position(8, 6), ClassIndex.empty(), Set.of());
+        assertThat(DRLParsers.parseCount()).isEqualTo(1);
+    }
+
+    @Test
     void nullTextYieldsNoDefinitions() {
         assertThat(DRLDefinitionHelper.findDefinitions(
                 "myDocument", null, new Position(0, 0), ClassIndex.empty(), Set.of()))

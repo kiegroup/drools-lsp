@@ -11,7 +11,6 @@ import org.antlr.v4.runtime.tree.ParseTree;
 import org.antlr.v4.runtime.tree.TerminalNode;
 import org.drools.drl.parser.antlr4.DRL10Lexer;
 import org.drools.drl.parser.antlr4.DRL10Parser;
-import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
 
@@ -62,15 +61,21 @@ final class DRLReferenceScanner {
      * failure yields an empty list.
      */
     static List<Occurrence> typeOccurrences(String text, String simpleName) {
-        List<Occurrence> out = new ArrayList<>();
         if (text == null || simpleName == null || simpleName.isEmpty()) {
+            return new ArrayList<>();
+        }
+        return typeOccurrences(ParsedDrl.of(text), simpleName);
+    }
+
+    /** As {@link #typeOccurrences(String, String)}, reusing an existing parse of the document. */
+    static List<Occurrence> typeOccurrences(ParsedDrl parsed, String simpleName) {
+        List<Occurrence> out = new ArrayList<>();
+        if (parsed == null || simpleName == null || simpleName.isEmpty()) {
             return out;
         }
         try {
-            DRL10Parser parser = DRLParsers.silent(text);
-            DRL10Parser.CompilationUnitContext cu = parser.compilationUnit();
-            collectStructured(cu, simpleName, out);
-            collectConsequence(parser, simpleName, out);
+            collectStructured(parsed.compilationUnit, simpleName, out);
+            collectConsequence(parsed.tokens(), simpleName, out);
         } catch (Exception e) {
             logger.fine(() -> "typeOccurrences failed for " + simpleName + ": " + e.getMessage());
         }
@@ -85,24 +90,28 @@ final class DRLReferenceScanner {
      * touching an identically-named binding in another rule.
      */
     static List<Range> bindingOccurrences(String text, Position caret, String bindingName) {
-        List<Range> out = new ArrayList<>();
         if (text == null || caret == null || bindingName == null || bindingName.length() < 2) {
+            return new ArrayList<>();
+        }
+        return bindingOccurrences(ParsedDrl.of(text), caret, bindingName);
+    }
+
+    /** As {@link #bindingOccurrences(String, Position, String)}, reusing an existing parse. */
+    static List<Range> bindingOccurrences(ParsedDrl parsed, Position caret, String bindingName) {
+        List<Range> out = new ArrayList<>();
+        if (parsed == null || caret == null || bindingName == null || bindingName.length() < 2) {
             return out;
         }
         try {
-            DRL10Parser parser = DRLParsers.silent(text);
-            DRL10Parser.CompilationUnitContext cu = parser.compilationUnit();
-            Integer tokenIndex =
-                    DRLParserHelper.computeTokenIndex(parser, caret.getLine() + 1, caret.getCharacter());
+            Integer tokenIndex = parsed.tokenIndexAt(caret);
             if (tokenIndex == null) {
                 return out;
             }
-            ParserRuleContext rule = enclosingRule(cu, tokenIndex);
+            ParserRuleContext rule = enclosingRule(parsed.compilationUnit, tokenIndex);
             if (rule == null || rule.getStart() == null || rule.getStop() == null) {
                 return out;
             }
-            CommonTokenStream tokens = (CommonTokenStream) parser.getTokenStream();
-            List<Token> all = tokens.getTokens();
+            List<Token> all = parsed.tokens().getTokens();
             int from = rule.getStart().getTokenIndex();
             int to = rule.getStop().getTokenIndex();
             for (int i = from; i <= to && i < all.size(); i++) {
@@ -185,8 +194,7 @@ final class DRLReferenceScanner {
 
     // --- consequence (RHS) pass -----------------------------------------
 
-    private static void collectConsequence(DRL10Parser parser, String simpleName, List<Occurrence> out) {
-        CommonTokenStream tokens = (CommonTokenStream) parser.getTokenStream();
+    private static void collectConsequence(CommonTokenStream tokens, String simpleName, List<Occurrence> out) {
         for (Token t : tokens.getTokens()) {
             if (t.getType() == DRL10Lexer.RHS_CHUNK) {
                 List<Range> ranges = new ArrayList<>();

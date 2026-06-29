@@ -202,6 +202,26 @@ class DRLRenameHelperTest {
     }
 
     @Test
+    void prepareParsesTheCurrentDocumentOnce() {
+        // No siblings (non-file URI), so every parser built is for the current doc.
+        DRLParsers.resetParseCount();
+        DRLRenameHelper.prepare(
+                "myDocument", PERSON_DRL, new Position(6, 5),
+                Map.of(), ClassIndex.empty(), Set.of());
+        assertThat(DRLParsers.parseCount()).isEqualTo(1);
+    }
+
+    @Test
+    void renameParsesTheCurrentDocumentOnce() {
+        // rename shares its single parse with the find-references call it delegates to.
+        DRLParsers.resetParseCount();
+        DRLRenameHelper.rename(
+                "myDocument", PERSON_DRL, new Position(6, 5), "Customer",
+                Map.of(), ClassIndex.empty(), Set.of());
+        assertThat(DRLParsers.parseCount()).isEqualTo(1);
+    }
+
+    @Test
     void renameRejectsIllegalNewName() {
         assertThat(DRLRenameHelper.rename(
                 "myDocument", PERSON_DRL, new Position(6, 5), "1bad",

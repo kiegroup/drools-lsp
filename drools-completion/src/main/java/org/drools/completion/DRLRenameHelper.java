@@ -60,8 +60,12 @@ public final class DRLRenameHelper {
             return null;
         }
         String word = DRLDefinitionHelper.wordAt(text, position);
-        if (word.isEmpty() || DRLDefinitionHelper.caretInCommentOrString(text, position)
-                || !isRenameable(word, text, position, uri, openFiles)) {
+        if (word.isEmpty()) {
+            return null;
+        }
+        ParsedDrl parsed = ParsedDrl.of(text);
+        if (DRLDefinitionHelper.caretInCommentOrString(parsed, position)
+                || !isRenameable(word, parsed, uri, openFiles)) {
             return null;
         }
         Range range = DRLDefinitionHelper.wordRangeAt(text, position);
@@ -82,6 +86,7 @@ public final class DRLRenameHelper {
         if (word.isEmpty()) {
             return null;
         }
+        ParsedDrl parsed = ParsedDrl.of(text);
 
         String replacement;
         if (word.charAt(0) == '$') {
@@ -93,13 +98,13 @@ public final class DRLRenameHelper {
             replacement = "$" + bare;
         } else {
             // Type: renameable only when declared in the workspace (not classpath).
-            if (!isDeclaredType(word, text, position, uri, openFiles) || !isIdentifier(newName)) {
+            if (!isDeclaredType(word, parsed, uri, openFiles) || !isIdentifier(newName)) {
                 return null;
             }
             replacement = newName;
         }
 
-        List<Location> refs = DRLReferencesHelper.references(uri, text, position, openFiles,
+        List<Location> refs = DRLReferencesHelper.collectReferences(uri, parsed, position, openFiles,
                 classIndex, buildOutputDirs, true);
         if (refs.isEmpty()) {
             return null;
@@ -112,7 +117,7 @@ public final class DRLRenameHelper {
         return new WorkspaceEdit(changes);
     }
 
-    private static boolean isRenameable(String word, String text, Position position, String uri,
+    private static boolean isRenameable(String word, ParsedDrl parsed, String uri,
                                         Map<Path, String> openFiles) {
         if (word.charAt(0) == '$') {
             return true; // bound variable
@@ -121,12 +126,13 @@ public final class DRLRenameHelper {
             return false;
         }
         // Declared types are renameable; classpath types resolve but are not.
-        return isDeclaredType(word, text, position, uri, openFiles);
+        return isDeclaredType(word, parsed, uri, openFiles);
     }
 
-    private static boolean isDeclaredType(String word, String text, Position position, String uri,
+    private static boolean isDeclaredType(String word, ParsedDrl parsed, String uri,
                                           Map<Path, String> openFiles) {
-        return DRLWorkspaceTypeIndex.build(text, toPath(uri), openFiles).containsKey(word);
+        return DRLWorkspaceTypeIndex.build(parsed.declaredTypes(), toPath(uri), openFiles)
+                .containsKey(word);
     }
 
     private static boolean isIdentifier(String s) {

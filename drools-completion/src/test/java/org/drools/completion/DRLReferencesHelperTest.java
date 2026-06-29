@@ -271,6 +271,16 @@ class DRLReferencesHelperTest {
     }
 
     @Test
+    void referencesParsesTheCurrentDocumentOnce() {
+        // No siblings (non-file URI), so every parser built is for the current doc.
+        DRLParsers.resetParseCount();
+        DRLReferencesHelper.references(
+                "myDocument", TYPE_USES_DRL, new Position(15, 5),
+                Map.of(), ClassIndex.empty(), Set.of(), true);
+        assertThat(DRLParsers.parseCount()).isEqualTo(1);
+    }
+
+    @Test
     void nullTextYieldsNoReferences() {
         assertThat(DRLReferencesHelper.references(
                 "myDocument", null, new Position(0, 0),

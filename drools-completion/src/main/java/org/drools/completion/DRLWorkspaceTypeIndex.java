@@ -71,10 +71,20 @@ public final class DRLWorkspaceTypeIndex {
      */
     public static Map<String, String> buildLinkTargets(String text, Path documentPath,
                                                         Map<Path, String> openFiles) {
+        return buildLinkTargets(DRLDeclaredTypeParser.parseDeclaredTypes(text), text,
+                documentPath, openFiles);
+    }
+
+    /**
+     * As {@link #buildLinkTargets(String, Path, Map)}, reusing the already-parsed
+     * current-document declares instead of re-parsing {@code text}.
+     */
+    public static Map<String, String> buildLinkTargets(List<DeclaredType> currentDocTypes, String text,
+                                                        Path documentPath, Map<Path, String> openFiles) {
         Map<String, String> targets = new HashMap<>();
         if (documentPath != null && text != null && !text.isEmpty()) {
             String uri = documentPath.toUri().toString();
-            for (DeclaredType t : DRLDeclaredTypeParser.parseDeclaredTypes(text)) {
+            for (DeclaredType t : currentDocTypes) {
                 addTarget(targets, t, uri);
             }
         }
@@ -94,8 +104,20 @@ public final class DRLWorkspaceTypeIndex {
         if (name == null || name.isEmpty()) {
             return null;
         }
+        return docFor(name, DRLDeclaredTypeParser.parseDeclaredTypes(text), text, documentPath, openFiles);
+    }
+
+    /**
+     * As {@link #docFor(String, String, Path, Map)}, reusing the already-parsed
+     * current-document declares for the layer-1 check instead of re-parsing.
+     */
+    public static String docFor(String name, List<DeclaredType> currentDocTypes, String text,
+                                Path documentPath, Map<Path, String> openFiles) {
+        if (name == null || name.isEmpty()) {
+            return null;
+        }
         // Layer 1: current document.
-        if (declaresType(text, name)) {
+        if (containsName(currentDocTypes, name)) {
             return DRLDocCommentParser.docFor(text, name);
         }
         if (documentPath == null) {
@@ -247,9 +269,15 @@ public final class DRLWorkspaceTypeIndex {
         if (text == null || text.isEmpty()) {
             return false;
         }
-        for (DeclaredType t : DRLDeclaredTypeParser.parseDeclaredTypes(text)) {
-            if (name.equals(t.name)) {
-                return true;
+        return containsName(DRLDeclaredTypeParser.parseDeclaredTypes(text), name);
+    }
+
+    private static boolean containsName(List<DeclaredType> types, String name) {
+        if (types != null) {
+            for (DeclaredType t : types) {
+                if (name.equals(t.name)) {
+                    return true;
+                }
             }
         }
         return false;

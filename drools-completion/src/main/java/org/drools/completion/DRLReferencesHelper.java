@@ -46,22 +46,31 @@ public final class DRLReferencesHelper {
     public static List<Location> references(String uri, String text, Position position,
                                             Map<Path, String> openFiles, ClassIndex classIndex,
                                             Set<Path> buildOutputDirs, boolean includeDeclaration) {
-        List<Location> out = new ArrayList<>();
         if (text == null || position == null) {
-            return out;
+            return new ArrayList<>();
         }
-        String word = DRLDefinitionHelper.wordAt(text, position);
+        // Parse the current document once; every step below reuses this parse.
+        return collectReferences(uri, ParsedDrl.of(text), position, openFiles, classIndex,
+                buildOutputDirs, includeDeclaration);
+    }
+
+    /** As {@link #references}, reusing an existing parse (rename shares its parse with this). */
+    static List<Location> collectReferences(String uri, ParsedDrl parsed, Position position,
+                                            Map<Path, String> openFiles, ClassIndex classIndex,
+                                            Set<Path> buildOutputDirs, boolean includeDeclaration) {
+        List<Location> out = new ArrayList<>();
+        String word = DRLDefinitionHelper.wordAt(parsed.text, position);
         if (word.isEmpty()) {
             return out;
         }
-        if (DRLDefinitionHelper.caretInCommentOrString(text, position)) {
+        if (DRLDefinitionHelper.caretInCommentOrString(parsed, position)) {
             return out;
         }
         Path docPath = toPath(uri);
 
         // Bound variable: rule-scoped, current document only.
         if (word.charAt(0) == '$') {
-            for (var range : DRLReferenceScanner.bindingOccurrences(text, position, word)) {
+            for (var range : DRLReferenceScanner.bindingOccurrences(parsed, position, word)) {
                 out.add(new Location(uri, range));
             }
             return out;
@@ -71,28 +80,30 @@ public final class DRLReferencesHelper {
         }
 
         // Declared type anywhere in the workspace → simple-name match across files.
-        Map<String, DeclaredType> typeIndex = DRLWorkspaceTypeIndex.build(text, docPath, openFiles);
+        Map<String, DeclaredType> typeIndex =
+                DRLWorkspaceTypeIndex.build(parsed.declaredTypes(), docPath, openFiles);
         if (typeIndex.containsKey(word)) {
-            addTypeRefs(uri, text, word, includeDeclaration, out);
-            DRLWorkspaceTypeIndex.forEachSiblingFile(docPath, openFiles,
-                    (fileUri, fileText) -> addTypeRefs(fileUri, fileText, word, includeDeclaration, out));
+            addTypeRefs(uri, DRLReferenceScanner.typeOccurrences(parsed, word), includeDeclaration, out);
+            DRLWorkspaceTypeIndex.forEachSiblingFile(docPath, openFiles, (fileUri, fileText) ->
+                    addTypeRefs(fileUri, DRLReferenceScanner.typeOccurrences(fileText, word),
+                            includeDeclaration, out));
             return out;
         }
 
         // Classpath type → DRL uses in files resolving the name to the same FQCN.
-        String fqcn = DRLDefinitionHelper.resolveFqcn(text, word, classIndex);
+        String fqcn = DRLDefinitionHelper.resolveFqcn(parsed, word, classIndex);
         if (fqcn == null) {
             return out;
         }
-        addClasspathRefs(uri, text, word, fqcn, classIndex, out);
+        addClasspathRefs(uri, parsed, word, fqcn, classIndex, out);
         DRLWorkspaceTypeIndex.forEachSiblingFile(docPath, openFiles,
                 (fileUri, fileText) -> addClasspathRefs(fileUri, fileText, word, fqcn, classIndex, out));
         return out;
     }
 
-    private static void addTypeRefs(String uri, String text, String simpleName,
+    private static void addTypeRefs(String uri, List<DRLReferenceScanner.Occurrence> occurrences,
                                     boolean includeDeclaration, List<Location> out) {
-        for (DRLReferenceScanner.Occurrence occ : DRLReferenceScanner.typeOccurrences(text, simpleName)) {
+        for (DRLReferenceScanner.Occurrence occ : occurrences) {
             if (occ.declaration && !includeDeclaration) {
                 continue;
             }
@@ -100,17 +111,27 @@ public final class DRLReferencesHelper {
         }
     }
 
-    private static void addClasspathRefs(String uri, String text, String simpleName, String fqcn,
+    /** Current-document classpath refs, reusing the shared parse. */
+    private static void addClasspathRefs(String uri, ParsedDrl parsed, String simpleName, String fqcn,
                                          ClassIndex classIndex, List<Location> out) {
-        if (!text.contains(simpleName)) {
+        if (!parsed.text.contains(simpleName)) {
             return;
         }
-        if (!fqcn.equals(DRLDefinitionHelper.resolveFqcn(text, simpleName, classIndex))) {
+        if (!fqcn.equals(DRLDefinitionHelper.resolveFqcn(parsed, simpleName, classIndex))) {
             return;
         }
-        for (DRLReferenceScanner.Occurrence occ : DRLReferenceScanner.typeOccurrences(text, simpleName)) {
+        for (DRLReferenceScanner.Occurrence occ : DRLReferenceScanner.typeOccurrences(parsed, simpleName)) {
             out.add(new Location(uri, occ.range));
         }
+    }
+
+    /** Sibling-file classpath refs: cheap text pre-check, then a single parse of that sibling. */
+    private static void addClasspathRefs(String uri, String text, String simpleName, String fqcn,
+                                         ClassIndex classIndex, List<Location> out) {
+        if (text == null || !text.contains(simpleName)) {
+            return;
+        }
+        addClasspathRefs(uri, ParsedDrl.of(text), simpleName, fqcn, classIndex, out);
     }
 
     /** Converts a document URI to a filesystem path, or null for non-file URIs. */

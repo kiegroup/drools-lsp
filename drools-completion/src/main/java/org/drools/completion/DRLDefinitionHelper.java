@@ -6,10 +6,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
 
-import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.Token;
 import org.drools.drl.parser.antlr4.DRL10Lexer;
-import org.drools.drl.parser.antlr4.DRL10Parser;
-import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
@@ -65,12 +63,14 @@ public final class DRLDefinitionHelper {
         if (word.isEmpty() || !Character.isJavaIdentifierStart(word.charAt(0))) {
             return List.of();
         }
-        if (caretInCommentOrString(text, position)) {
+        // Parse the current document once; the steps below reuse this parse.
+        ParsedDrl parsed = ParsedDrl.of(text);
+        if (caretInCommentOrString(parsed, position)) {
             return List.of();
         }
 
         // 1. declare blocks in this document.
-        for (DeclaredType declared : DRLDeclaredTypeParser.parseDeclaredTypes(text)) {
+        for (DeclaredType declared : parsed.declaredTypes()) {
             if (word.equals(declared.name)) {
                 return List.of(new Location(uri, nameRange(declared, word)));
             }
@@ -83,7 +83,7 @@ public final class DRLDefinitionHelper {
         }
 
         // 3. Java sources by Maven convention.
-        String fqcn = resolveFqcn(text, word, classIndex);
+        String fqcn = resolveFqcn(parsed, word, classIndex);
         if (fqcn == null) {
             return List.of();
         }
@@ -127,8 +127,17 @@ public final class DRLDefinitionHelper {
     /** Resolves {@code word} to an FQCN from {@code text}'s imports + class index. Shared with type hierarchy. */
     static String resolveFqcn(String text, String word, ClassIndex classIndex) {
         try {
-            DRL10Parser parser = DRLParsers.silent(text);
-            return DRLCompletionHelper.resolveFqcn(word, word, parser.compilationUnit(), classIndex);
+            return resolveFqcn(ParsedDrl.of(text), word, classIndex);
+        } catch (Exception e) {
+            logger.fine(() -> "FQCN resolution failed for " + word + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    /** As {@link #resolveFqcn(String, String, ClassIndex)}, reusing an existing parse of the document. */
+    static String resolveFqcn(ParsedDrl parsed, String word, ClassIndex classIndex) {
+        try {
+            return DRLCompletionHelper.resolveFqcn(word, word, parsed.compilationUnit, classIndex);
         } catch (Exception e) {
             logger.fine(() -> "FQCN resolution failed for " + word + ": " + e.getMessage());
             return null;
@@ -194,32 +203,16 @@ public final class DRLDefinitionHelper {
      * True when the caret sits inside a comment or string-literal token, where an
      * identifier-looking word is not an actual symbol occurrence. Shared by
      * go-to-definition, find-references, and rename so they don't act on a name
-     * that merely appears in prose.
-     *
-     * <p>Classifying the caret token only needs the token stream, so this lexes
-     * ({@link CommonTokenStream#fill()}) rather than running the full parser —
-     * much cheaper than the {@code compilationUnit()} parses these operations
-     * already perform. Best-effort: a lex failure or a caret that doesn't
-     * resolve to a token is treated as code, returning {@code false}.
+     * that merely appears in prose. Reuses the document's already-built token
+     * stream — no extra parse or lex. Best-effort: a caret that doesn't resolve
+     * to a token is treated as code, returning {@code false}.
      */
-    static boolean caretInCommentOrString(String text, Position position) {
-        if (text == null || position == null) {
+    static boolean caretInCommentOrString(ParsedDrl parsed, Position position) {
+        if (parsed == null || position == null) {
             return false;
         }
-        try {
-            DRL10Parser parser = DRLParsers.silent(text);
-            CommonTokenStream tokens = (CommonTokenStream) parser.getTokenStream();
-            tokens.fill(); // lex all tokens (incl. hidden-channel comments); no parse tree needed
-            Integer index = DRLParserHelper.computeTokenIndex(
-                    parser, position.getLine() + 1, position.getCharacter());
-            if (index == null || index < 0 || index >= tokens.size()) {
-                return false;
-            }
-            return isCommentOrString(tokens.get(index).getType());
-        } catch (Exception e) {
-            logger.fine(() -> "caret-context check failed: " + e.getMessage());
-            return false;
-        }
+        Token token = parsed.tokenAt(position);
+        return token != null && isCommentOrString(token.getType());
     }
 
     /** Lexer token types carrying comment or string-literal text, on both the LHS and the RHS consequence. */

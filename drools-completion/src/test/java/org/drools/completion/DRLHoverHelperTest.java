@@ -34,6 +34,15 @@ class DRLHoverHelperTest {
     }
 
     @Test
+    void hoverParsesTheCurrentDocumentOnce() {
+        // Declared-type hover (the path that also reads doc + link targets).
+        DRLParsers.resetParseCount();
+        DRLHoverHelper.hover(DECLARE_DRL, new Position(10, 6),
+                ClassIndex.empty(), ClassMemberIndex.empty(), null);
+        assertThat(DRLParsers.parseCount()).isEqualTo(1);
+    }
+
+    @Test
     void hoverOnDeclaredTypeShowsFieldsAndDoc() {
         // Caret on "Person" in the pattern.
         Hover hover = DRLHoverHelper.hover(DECLARE_DRL, new Position(10, 6),
