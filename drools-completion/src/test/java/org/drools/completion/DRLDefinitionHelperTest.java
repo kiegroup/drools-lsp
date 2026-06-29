@@ -116,6 +116,28 @@ class DRLDefinitionHelperTest {
     }
 
     @Test
+    void caretInCommentYieldsNoDefinitions() {
+        String drl = """
+                package demo;
+                declare Person
+                  name : String
+                end
+                rule R
+                  when
+                    // Person mentioned
+                    Person( )
+                  then
+                end
+                """;
+        // Caret on "Person" inside the LHS // comment (line 6) — not a real use.
+        List<Location> defs = DRLDefinitionHelper.findDefinitions(
+                "myDocument", drl, new Position(6, 9),
+                ClassIndex.empty(), Set.of());
+
+        assertThat(defs).isEmpty();
+    }
+
+    @Test
     void unknownSymbolYieldsNoDefinitions() {
         List<Location> defs = DRLDefinitionHelper.findDefinitions(
                 "myDocument", DECLARE_DRL, new Position(8, 14),

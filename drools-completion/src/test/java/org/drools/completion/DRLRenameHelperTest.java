@@ -64,6 +64,28 @@ class DRLRenameHelperTest {
     }
 
     @Test
+    void prepareReturnsNullWhenCaretInComment() {
+        String drl = """
+                package demo;
+                declare Person
+                  name : String
+                end
+                rule R
+                  when
+                    Person( )
+                  then
+                    // Person here
+                    insert(new Person());
+                end
+                """;
+        // Caret on "Person" inside the RHS // comment (line 8).
+        assertThat(DRLRenameHelper.prepare(
+                "myDocument", drl, new Position(8, 9),
+                Map.of(), ClassIndex.empty(), Set.of()))
+                .isNull();
+    }
+
+    @Test
     void prepareReturnsRangeForBoundVariable() {
         String drl = "rule A\n  when\n    $p : Person( )\n  then\n    update($p);\nend\n";
         // Caret on "$p" (line 2, cols 4..6).
@@ -138,6 +160,28 @@ class DRLRenameHelperTest {
         assertThat(edits).hasSize(2); // rule A only: binding site + RHS use
         assertThat(edits).allSatisfy(e -> assertThat(e.getNewText()).isEqualTo("$q"));
         assertThat(edits).allSatisfy(e -> assertThat(e.getRange().getStart().getLine()).isLessThan(6));
+    }
+
+    @Test
+    void renameReturnsNullWhenCaretInComment() {
+        String drl = """
+                package demo;
+                declare Person
+                  name : String
+                end
+                rule R
+                  when
+                    Person( )
+                  then
+                    // Person here
+                    insert(new Person());
+                end
+                """;
+        // Caret on "Person" inside the RHS // comment (line 8).
+        assertThat(DRLRenameHelper.rename(
+                "myDocument", drl, new Position(8, 9), "Customer",
+                Map.of(), ClassIndex.empty(), Set.of()))
+                .isNull();
     }
 
     @Test

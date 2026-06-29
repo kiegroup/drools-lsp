@@ -6,7 +6,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.logging.Logger;
 
+import org.antlr.v4.runtime.CommonTokenStream;
+import org.drools.drl.parser.antlr4.DRL10Lexer;
 import org.drools.drl.parser.antlr4.DRL10Parser;
+import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
@@ -60,6 +63,9 @@ public final class DRLDefinitionHelper {
         }
         String word = wordAt(text, position);
         if (word.isEmpty() || !Character.isJavaIdentifierStart(word.charAt(0))) {
+            return List.of();
+        }
+        if (caretInCommentOrString(text, position)) {
             return List.of();
         }
 
@@ -182,5 +188,55 @@ public final class DRLDefinitionHelper {
 
     private static boolean isIdentifierChar(char c) {
         return Character.isLetterOrDigit(c) || c == '_' || c == '$';
+    }
+
+    /**
+     * True when the caret sits inside a comment or string-literal token, where an
+     * identifier-looking word is not an actual symbol occurrence. Shared by
+     * go-to-definition, find-references, and rename so they don't act on a name
+     * that merely appears in prose.
+     *
+     * <p>Classifying the caret token only needs the token stream, so this lexes
+     * ({@link CommonTokenStream#fill()}) rather than running the full parser —
+     * much cheaper than the {@code compilationUnit()} parses these operations
+     * already perform. Best-effort: a lex failure or a caret that doesn't
+     * resolve to a token is treated as code, returning {@code false}.
+     */
+    static boolean caretInCommentOrString(String text, Position position) {
+        if (text == null || position == null) {
+            return false;
+        }
+        try {
+            DRL10Parser parser = DRLParsers.silent(text);
+            CommonTokenStream tokens = (CommonTokenStream) parser.getTokenStream();
+            tokens.fill(); // lex all tokens (incl. hidden-channel comments); no parse tree needed
+            Integer index = DRLParserHelper.computeTokenIndex(
+                    parser, position.getLine() + 1, position.getCharacter());
+            if (index == null || index < 0 || index >= tokens.size()) {
+                return false;
+            }
+            return isCommentOrString(tokens.get(index).getType());
+        } catch (Exception e) {
+            logger.fine(() -> "caret-context check failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /** Lexer token types carrying comment or string-literal text, on both the LHS and the RHS consequence. */
+    private static boolean isCommentOrString(int tokenType) {
+        switch (tokenType) {
+            case DRL10Lexer.COMMENT:
+            case DRL10Lexer.LINE_COMMENT:
+            case DRL10Lexer.STRING_LITERAL:
+            case DRL10Lexer.DRL_STRING_LITERAL:
+            case DRL10Lexer.TEXT_BLOCK:
+            case DRL10Lexer.CHAR_LITERAL:
+            case DRL10Lexer.RHS_COMMENT:
+            case DRL10Lexer.RHS_LINE_COMMENT:
+            case DRL10Lexer.RHS_STRING_LITERAL:
+                return true;
+            default:
+                return false;
+        }
     }
 }

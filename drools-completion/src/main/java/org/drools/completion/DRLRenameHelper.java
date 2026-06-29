@@ -60,7 +60,8 @@ public final class DRLRenameHelper {
             return null;
         }
         String word = DRLDefinitionHelper.wordAt(text, position);
-        if (word.isEmpty() || !isRenameable(word, text, position, uri, openFiles)) {
+        if (word.isEmpty() || DRLDefinitionHelper.caretInCommentOrString(text, position)
+                || !isRenameable(word, text, position, uri, openFiles)) {
             return null;
         }
         Range range = DRLDefinitionHelper.wordRangeAt(text, position);

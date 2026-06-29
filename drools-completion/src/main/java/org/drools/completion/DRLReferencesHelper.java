@@ -54,6 +54,9 @@ public final class DRLReferencesHelper {
         if (word.isEmpty()) {
             return out;
         }
+        if (DRLDefinitionHelper.caretInCommentOrString(text, position)) {
+            return out;
+        }
         Path docPath = toPath(uri);
 
         // Bound variable: rule-scoped, current document only.

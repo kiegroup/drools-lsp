@@ -91,6 +91,69 @@ class DRLReferencesHelperTest {
     }
 
     @Test
+    void caretInCommentYieldsNoReferences() {
+        String drl = """
+                package demo;
+                declare Person
+                  name : String
+                end
+                rule R
+                  when
+                    Person( )
+                  then
+                    // Person here
+                    insert(new Person());
+                end
+                """;
+        // Caret on "Person" inside the RHS // comment (line 8) — not a real use.
+        List<Location> refs = DRLReferencesHelper.references(
+                "myDocument", drl, new Position(8, 9),
+                Map.of(), ClassIndex.empty(), Set.of(), true);
+
+        assertThat(refs).isEmpty();
+    }
+
+    @Test
+    void caretInStringLiteralYieldsNoReferences() {
+        String drl = """
+                package demo;
+                declare Person
+                  name : String
+                end
+                rule R
+                  when
+                    Person( name == "Person" )
+                  then
+                end
+                """;
+        // Caret on "Person" inside the "Person" string literal (line 6).
+        List<Location> refs = DRLReferencesHelper.references(
+                "myDocument", drl, new Position(6, 23),
+                Map.of(), ClassIndex.empty(), Set.of(), true);
+
+        assertThat(refs).isEmpty();
+    }
+
+    @Test
+    void caretInCommentOnBindingYieldsNoReferences() {
+        String drl = """
+                rule A
+                  when
+                    $p : Person( )
+                  then
+                    // touch $p
+                    update($p);
+                end
+                """;
+        // Caret on "$p" inside the RHS // comment (line 4).
+        List<Location> refs = DRLReferencesHelper.references(
+                "myDocument", drl, new Position(4, 14),
+                Map.of(), ClassIndex.empty(), Set.of(), true);
+
+        assertThat(refs).isEmpty();
+    }
+
+    @Test
     void boundVariableReferencesAreScopedToTheEnclosingRule() {
         String drl = """
                 rule A
