@@ -1,6 +1,7 @@
 package org.drools.lsp.server;
 
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -18,15 +19,23 @@ import java.util.logging.Logger;
 import org.drools.completion.ClassIndex;
 import org.drools.completion.ClassMemberIndex;
 import org.drools.completion.DRLCompletionHelper;
+import org.drools.completion.DRLCodeLensHelper;
 import org.drools.completion.DRLDefinitionHelper;
+import org.drools.completion.DRLReferencesHelper;
+import org.drools.completion.DRLRenameHelper;
 import org.drools.completion.DRLDiagnosticHelper;
+import org.drools.completion.DRLDocumentSymbolHelper;
+import org.drools.completion.DRLFoldingRangeHelper;
 import org.drools.completion.DRLHoverHelper;
 import org.drools.completion.DRLInlayHintHelper;
 import org.drools.completion.DRLLintHelper;
+import org.drools.completion.DRLTypeHierarchyHelper;
 import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.CodeAction;
 import org.eclipse.lsp4j.CodeActionKind;
 import org.eclipse.lsp4j.CodeActionParams;
+import org.eclipse.lsp4j.CodeLens;
+import org.eclipse.lsp4j.CodeLensParams;
 import org.eclipse.lsp4j.Command;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionItemKind;
@@ -40,18 +49,35 @@ import org.eclipse.lsp4j.DidChangeTextDocumentParams;
 import org.eclipse.lsp4j.DidCloseTextDocumentParams;
 import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.DidSaveTextDocumentParams;
+import org.eclipse.lsp4j.DocumentDiagnosticParams;
+import org.eclipse.lsp4j.DocumentDiagnosticReport;
+import org.eclipse.lsp4j.DocumentSymbol;
+import org.eclipse.lsp4j.DocumentSymbolParams;
+import org.eclipse.lsp4j.FoldingRange;
+import org.eclipse.lsp4j.FoldingRangeRequestParams;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.InlayHint;
 import org.eclipse.lsp4j.InlayHintParams;
+import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.MessageParams;
 import org.eclipse.lsp4j.MessageType;
 import org.eclipse.lsp4j.Position;
-import org.eclipse.lsp4j.PublishDiagnosticsParams;
+import org.eclipse.lsp4j.PrepareRenameDefaultBehavior;
+import org.eclipse.lsp4j.PrepareRenameParams;
+import org.eclipse.lsp4j.PrepareRenameResult;
+import org.eclipse.lsp4j.ReferenceParams;
+import org.eclipse.lsp4j.RenameParams;
+import org.eclipse.lsp4j.RelatedFullDocumentDiagnosticReport;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.TextEdit;
+import org.eclipse.lsp4j.TypeHierarchyItem;
+import org.eclipse.lsp4j.TypeHierarchyPrepareParams;
+import org.eclipse.lsp4j.TypeHierarchySubtypesParams;
+import org.eclipse.lsp4j.TypeHierarchySupertypesParams;
 import org.eclipse.lsp4j.WorkspaceEdit;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
+import org.eclipse.lsp4j.jsonrpc.messages.Either3;
 import org.eclipse.lsp4j.services.TextDocumentService;
 
 public class DroolsLspDocumentService implements TextDocumentService {
@@ -82,13 +108,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     @Override
     public void didOpen(DidOpenTextDocumentParams params) {
-        String uri = params.getTextDocument().getUri();
-        sourcesMap.put(uri, params.getTextDocument().getText());
-        CompletableFuture.runAsync(() ->
-                server.getClient().publishDiagnostics(
-                        new PublishDiagnosticsParams(uri, validate(uri))
-                )
-        );
+        sourcesMap.put(params.getTextDocument().getUri(), params.getTextDocument().getText());
     }
 
     /**
@@ -134,13 +154,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     @Override
     public void didChange(DidChangeTextDocumentParams params) {
-        String uri = params.getTextDocument().getUri();
-        sourcesMap.put(uri, params.getContentChanges().get(0).getText());
-        CompletableFuture.runAsync(() ->
-                server.getClient().publishDiagnostics(
-                        new PublishDiagnosticsParams(uri, validate(uri))
-                )
-        );
+        sourcesMap.put(params.getTextDocument().getUri(), params.getContentChanges().get(0).getText());
     }
 
     public String getRuleName(CompletionParams completionParams) {
@@ -188,6 +202,23 @@ public class DroolsLspDocumentService implements TextDocumentService {
     private static Path toPath(String uri) {
         try {
             return Paths.get(URI.create(uri));
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Current text for {@code uri}: the open buffer if present, else read from disk, else null. */
+    private String textForUri(String uri) {
+        String open = sourcesMap.get(uri);
+        if (open != null) {
+            return open;
+        }
+        Path p = toPath(uri);
+        if (p == null) {
+            return null;
+        }
+        try {
+            return Files.readString(p);
         } catch (Exception e) {
             return null;
         }
@@ -268,6 +299,92 @@ public class DroolsLspDocumentService implements TextDocumentService {
     }
 
     @Override
+    @SuppressWarnings("deprecation")  // Either<SymbolInformation, …> is the lsp4j signature; we return the DocumentSymbol side.
+    public CompletableFuture<List<Either<SymbolInformation, DocumentSymbol>>> documentSymbol(DocumentSymbolParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<Either<SymbolInformation, DocumentSymbol>>emptyList();
+            }
+            String text = sourcesMap.get(params.getTextDocument().getUri());
+            List<DocumentSymbol> symbols = DRLDocumentSymbolHelper.symbols(text);
+            List<Either<SymbolInformation, DocumentSymbol>> result = new ArrayList<>(symbols.size());
+            for (DocumentSymbol symbol : symbols) {
+                result.add(Either.forRight(symbol));
+            }
+            return result;
+        });
+    }
+
+    @Override
+    public CompletableFuture<DocumentDiagnosticReport> diagnostic(DocumentDiagnosticParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            List<Diagnostic> items =
+                    (params != null && params.getTextDocument() != null
+                            && sourcesMap.containsKey(params.getTextDocument().getUri()))
+                            ? validate(params.getTextDocument().getUri())
+                            : Collections.emptyList();
+            return new DocumentDiagnosticReport(new RelatedFullDocumentDiagnosticReport(items));
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<FoldingRange>> foldingRange(FoldingRangeRequestParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<FoldingRange>emptyList();
+            }
+            String text = sourcesMap.get(params.getTextDocument().getUri());
+            return DRLFoldingRangeHelper.foldingRanges(text);
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<TypeHierarchyItem>> prepareTypeHierarchy(TypeHierarchyPrepareParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<TypeHierarchyItem>emptyList();
+            }
+            String uri = params.getTextDocument().getUri();
+            Path documentPath = toPath(uri);
+            return DRLTypeHierarchyHelper.prepare(textForUri(uri), params.getPosition(), uri,
+                    openSiblings(documentPath), classIndex, server.getBuildOutputDirs());
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<TypeHierarchyItem>> typeHierarchySupertypes(TypeHierarchySupertypesParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getItem() == null) {
+                return Collections.<TypeHierarchyItem>emptyList();
+            }
+            TypeHierarchyItem item = params.getItem();
+            // Classpath items resolve via reflection and ignore the file text /
+            // sibling buffers, so skip the (potentially large .java) disk read.
+            boolean classpath = DRLTypeHierarchyHelper.isClasspathItem(item);
+            return DRLTypeHierarchyHelper.supertypes(item,
+                    classpath ? null : textForUri(item.getUri()),
+                    classpath ? Collections.emptyMap() : openSiblings(toPath(item.getUri())),
+                    classIndex, classMemberIndex, server.getBuildOutputDirs());
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<TypeHierarchyItem>> typeHierarchySubtypes(TypeHierarchySubtypesParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getItem() == null) {
+                return Collections.<TypeHierarchyItem>emptyList();
+            }
+            TypeHierarchyItem item = params.getItem();
+            // Classpath subtypes aren't enumerable here (the helper returns empty),
+            // so avoid the disk read and sibling scan for those.
+            boolean classpath = DRLTypeHierarchyHelper.isClasspathItem(item);
+            return DRLTypeHierarchyHelper.subtypes(item,
+                    classpath ? null : textForUri(item.getUri()),
+                    classpath ? Collections.emptyMap() : openSiblings(toPath(item.getUri())));
+        });
+    }
+
+    @Override
     public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>> definition(DefinitionParams params) {
         return CompletableFuture.supplyAsync(() -> {
             String uri = params.getTextDocument().getUri();
@@ -277,6 +394,70 @@ public class DroolsLspDocumentService implements TextDocumentService {
                     uri, text, params.getPosition(), classIndex, server.getBuildOutputDirs(),
                     openSiblings(documentPath)));
             return Either.forLeft(definitions == null ? List.of() : definitions);
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<? extends Location>> references(ReferenceParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<Location>emptyList();
+            }
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            Path documentPath = toPath(uri);
+            boolean includeDeclaration =
+                    params.getContext() != null && params.getContext().isIncludeDeclaration();
+            return DRLReferencesHelper.references(uri, text, params.getPosition(),
+                    openSiblings(documentPath), classIndex, server.getBuildOutputDirs(),
+                    includeDeclaration);
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<? extends CodeLens>> codeLens(CodeLensParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return Collections.<CodeLens>emptyList();
+            }
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            Path documentPath = toPath(uri);
+            return DRLCodeLensHelper.codeLenses(uri, text, openSiblings(documentPath),
+                    classIndex, server.getBuildOutputDirs());
+        });
+    }
+
+    @Override
+    public CompletableFuture<Either3<Range, PrepareRenameResult, PrepareRenameDefaultBehavior>>
+            prepareRename(PrepareRenameParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return null;
+            }
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            Path documentPath = toPath(uri);
+            DRLRenameHelper.Prepared prepared = DRLRenameHelper.prepare(uri, text, params.getPosition(),
+                    openSiblings(documentPath), classIndex, server.getBuildOutputDirs());
+            // null → the client refuses the rename (e.g. caret on a classpath type).
+            return prepared == null
+                    ? null
+                    : Either3.forSecond(new PrepareRenameResult(prepared.range, prepared.placeholder));
+        });
+    }
+
+    @Override
+    public CompletableFuture<WorkspaceEdit> rename(RenameParams params) {
+        return CompletableFuture.supplyAsync(() -> {
+            if (params == null || params.getTextDocument() == null) {
+                return null;
+            }
+            String uri = params.getTextDocument().getUri();
+            String text = sourcesMap.get(uri);
+            Path documentPath = toPath(uri);
+            return DRLRenameHelper.rename(uri, text, params.getPosition(), params.getNewName(),
+                    openSiblings(documentPath), classIndex, server.getBuildOutputDirs());
         });
     }
 
@@ -416,15 +597,7 @@ public class DroolsLspDocumentService implements TextDocumentService {
 
     @Override
     public void didClose(DidCloseTextDocumentParams params) {
-        String uri = params.getTextDocument().getUri();
-        sourcesMap.remove(uri);
-        // Clear the document's diagnostics so stale squiggles don't survive
-        // the editor closing the file.
-        CompletableFuture.runAsync(() ->
-                server.getClient().publishDiagnostics(
-                        new PublishDiagnosticsParams(uri, Collections.emptyList())
-                )
-        );
+        sourcesMap.remove(params.getTextDocument().getUri());
     }
 
     @Override

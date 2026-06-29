@@ -11,12 +11,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Logger;
 
-import org.antlr.v4.runtime.BaseErrorListener;
-import org.antlr.v4.runtime.Lexer;
-import org.antlr.v4.runtime.RecognitionException;
-import org.antlr.v4.runtime.Recognizer;
 import org.drools.drl.parser.antlr4.DRL10Parser;
-import org.drools.drl.parser.antlr4.DRLParserHelper;
 
 /**
  * Extracts {@link DeclaredType}s ({@code declare} blocks, including declared
@@ -27,15 +22,6 @@ public final class DRLDeclaredTypeParser {
 
     private static final Logger logger =
             Logger.getLogger(DRLDeclaredTypeParser.class.getName());
-
-    /** Swallows ANTLR parse errors — partial/incomplete DRL is normal here. */
-    private static final BaseErrorListener SILENT = new BaseErrorListener() {
-        @Override
-        public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol,
-                                int line, int charPositionInLine, String msg,
-                                RecognitionException e) {
-        }
-    };
 
     private DRLDeclaredTypeParser() {
     }
@@ -95,31 +81,12 @@ public final class DRLDeclaredTypeParser {
      */
     static List<DeclaredType> parseDeclaredTypes(String text) {
         try {
-            DRL10Parser.CompilationUnitContext cu = parseSilently(text);
+            DRL10Parser.CompilationUnitContext cu = DRLParsers.silent(text).compilationUnit();
             return cu == null ? new ArrayList<>() : extractFromCompilationUnit(cu);
         } catch (Exception e) {
             logger.fine(() -> "Failed to parse DRL for declared types: " + e.getMessage());
             return new ArrayList<>();
         }
-    }
-
-    /**
-     * Parses {@code text} into a compilation unit with parser errors silenced
-     * (partial/incomplete DRL is normal in an editor), or {@code null} for
-     * blank input. Shared so callers that need both the declared types and the
-     * parse tree (e.g. the unknown-type check) parse only once.
-     */
-    static DRL10Parser.CompilationUnitContext parseSilently(String text) {
-        if (text == null || text.isBlank()) {
-            return null;
-        }
-        DRL10Parser parser = DRLParserHelper.createDrlParser(text);
-        Lexer lexer = (Lexer) parser.getTokenStream().getTokenSource();
-        lexer.removeErrorListeners();
-        lexer.addErrorListener(SILENT);
-        parser.removeErrorListeners();
-        parser.addErrorListener(SILENT);
-        return parser.compilationUnit();
     }
 
     /**

@@ -49,6 +49,34 @@ class ClassMemberIndexTest {
     }
 
     @Test
+    void supertypesOfReportsSuperclassAndInterfaces() {
+        // ArrayList extends AbstractList implements List, RandomAccess,
+        // Cloneable, Serializable — a stable JDK hierarchy.
+        List<String> supers = index.supertypesOf("java.util.ArrayList");
+
+        assertThat(supers)
+                .contains("java.util.AbstractList", "java.util.List")
+                .as("java.lang.Object is omitted as a supertype")
+                .doesNotContain("java.lang.Object");
+    }
+
+    @Test
+    void supertypesOfOmitsObjectForPlainClass() {
+        // Pet extends Object directly and implements nothing.
+        assertThat(index.supertypesOf("org.drools.completion.fixtures.Pet")).isEmpty();
+    }
+
+    @Test
+    void supertypesOfUnknownClassIsEmpty() {
+        assertThat(index.supertypesOf("does.not.Exist")).isEmpty();
+    }
+
+    @Test
+    void supertypesOfEmptyIndexIsEmpty() {
+        assertThat(ClassMemberIndex.empty().supertypesOf("java.util.ArrayList")).isEmpty();
+    }
+
+    @Test
     void unknownClassYieldsNoMembers() {
         assertThat(index.membersOf("does.not.Exist")).isEmpty();
         // Negative result is cached and stays consistent.

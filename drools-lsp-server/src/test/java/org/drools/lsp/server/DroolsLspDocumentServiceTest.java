@@ -11,6 +11,8 @@ import org.eclipse.lsp4j.Command;
 import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionParams;
 import org.eclipse.lsp4j.DefinitionParams;
+import org.eclipse.lsp4j.DocumentDiagnosticParams;
+import org.eclipse.lsp4j.DocumentDiagnosticReport;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.HoverParams;
 import org.eclipse.lsp4j.InlayHint;
@@ -19,7 +21,17 @@ import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.PrepareRenameParams;
+import org.eclipse.lsp4j.ReferenceContext;
+import org.eclipse.lsp4j.ReferenceParams;
+import org.eclipse.lsp4j.RenameParams;
 import org.eclipse.lsp4j.TextDocumentIdentifier;
+import org.eclipse.lsp4j.TextEdit;
+import org.eclipse.lsp4j.WorkspaceEdit;
+import org.eclipse.lsp4j.TypeHierarchyItem;
+import org.eclipse.lsp4j.TypeHierarchyPrepareParams;
+import org.eclipse.lsp4j.TypeHierarchySubtypesParams;
+import org.eclipse.lsp4j.TypeHierarchySupertypesParams;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -126,6 +138,19 @@ class DroolsLspDocumentServiceTest {
         assertThat(diags).isNotEmpty();
         assertThat(diags)
                  .anySatisfy(d -> assertThat(d.getSource()).isEqualTo("drools-parser"));
+    }
+
+    @Test
+    void pullDiagnosticReportsErrors() throws Exception {
+        String brokenDrl = "rule R when Person( then end";
+        DroolsLspDocumentService service = getDroolsLspDocumentService(brokenDrl);
+
+        DocumentDiagnosticReport report = service.diagnostic(
+                new DocumentDiagnosticParams(new TextDocumentIdentifier("myDocument"))).get();
+
+        assertThat(report.getRelatedFullDocumentDiagnosticReport().getItems())
+                .isNotEmpty()
+                .anySatisfy(d -> assertThat(d.getSource()).isEqualTo("drools-parser"));
     }
 
     @Test
@@ -274,6 +299,147 @@ class DroolsLspDocumentServiceTest {
                 System.setProperty("drools.lsp.inlayHints.enabled", previous);
             }
         }
+    }
+
+    private static final String TYPE_HIERARCHY_DRL = """
+            package demo;
+
+            declare Animal
+              legs : int
+            end
+
+            declare Dog extends Animal
+              good : boolean
+            end
+            """;
+
+    @Test
+    void prepareTypeHierarchyResolvesDeclare() throws Exception {
+        DroolsLspDocumentService service = getDroolsLspDocumentService(TYPE_HIERARCHY_DRL);
+
+        TypeHierarchyPrepareParams params = new TypeHierarchyPrepareParams();
+        params.setTextDocument(new TextDocumentIdentifier("myDocument"));
+        params.setPosition(new Position(6, 9)); // caret on "Dog"
+
+        List<TypeHierarchyItem> items = service.prepareTypeHierarchy(params).get();
+
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0).getName()).isEqualTo("Dog");
+        assertThat(items.get(0).getUri()).isEqualTo("myDocument");
+    }
+
+    @Test
+    void typeHierarchySupertypesResolvesDeclaredParent() throws Exception {
+        DroolsLspDocumentService service = getDroolsLspDocumentService(TYPE_HIERARCHY_DRL);
+
+        TypeHierarchyPrepareParams prepare = new TypeHierarchyPrepareParams();
+        prepare.setTextDocument(new TextDocumentIdentifier("myDocument"));
+        prepare.setPosition(new Position(6, 9)); // "Dog"
+        TypeHierarchyItem dog = service.prepareTypeHierarchy(prepare).get().get(0);
+
+        List<TypeHierarchyItem> supers =
+                service.typeHierarchySupertypes(new TypeHierarchySupertypesParams(dog)).get();
+
+        assertThat(supers).hasSize(1);
+        assertThat(supers.get(0).getName()).isEqualTo("Animal");
+    }
+
+    @Test
+    void renameRewritesDeclaredTypeUses() throws Exception {
+        String drl = """
+                package demo;
+
+                declare Person
+                  name : String
+                end
+
+                rule R
+                  when
+                    Person( name == "x" )
+                  then
+                    insert(new Person());
+                end
+                """;
+        DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+        RenameParams params = new RenameParams();
+        params.setTextDocument(new TextDocumentIdentifier("myDocument"));
+        params.setPosition(new Position(8, 5)); // caret on the pattern "Person"
+        params.setNewName("Customer");
+
+        WorkspaceEdit edit = service.rename(params).get();
+
+        assertThat(edit).isNotNull();
+        List<TextEdit> edits = edit.getChanges().get("myDocument");
+        assertThat(edits).hasSize(3); // declare, pattern, RHS new
+        assertThat(edits).allSatisfy(e -> assertThat(e.getNewText()).isEqualTo("Customer"));
+    }
+
+    @Test
+    void prepareRenameRejectsClasspathType() throws Exception {
+        String drl = """
+                package demo;
+                import org.example.Pet;
+                rule R
+                  when
+                    Pet( )
+                  then
+                end
+                """;
+        DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+        PrepareRenameParams params = new PrepareRenameParams();
+        params.setTextDocument(new TextDocumentIdentifier("myDocument"));
+        params.setPosition(new Position(4, 5)); // caret on "Pet"
+
+        // null → the client refuses the rename.
+        assertThat(service.prepareRename(params).get()).isNull();
+    }
+
+    @Test
+    void referencesFindsDeclaredTypeUses() throws Exception {
+        String drl = """
+                package demo;
+
+                declare Person
+                  name : String
+                end
+
+                rule R
+                  when
+                    Person( name == "x" )
+                  then
+                    insert(new Person());
+                end
+                """;
+        DroolsLspDocumentService service = getDroolsLspDocumentService(drl);
+
+        ReferenceParams params = new ReferenceParams();
+        params.setTextDocument(new TextDocumentIdentifier("myDocument"));
+        params.setPosition(new Position(8, 5)); // caret on the pattern "Person"
+        params.setContext(new ReferenceContext(true));
+
+        List<? extends Location> refs = service.references(params).get();
+
+        // declare(2), pattern(8), RHS new(10)
+        assertThat(refs).hasSize(3);
+        assertThat(refs).allSatisfy(l -> assertThat(l.getUri()).isEqualTo("myDocument"));
+    }
+
+    @Test
+    void typeHierarchySubtypesResolvesDeclaredChild() throws Exception {
+        DroolsLspDocumentService service = getDroolsLspDocumentService(TYPE_HIERARCHY_DRL);
+
+        TypeHierarchyPrepareParams prepare = new TypeHierarchyPrepareParams();
+        prepare.setTextDocument(new TextDocumentIdentifier("myDocument"));
+        prepare.setPosition(new Position(2, 9)); // "Animal"
+        TypeHierarchyItem animal = service.prepareTypeHierarchy(prepare).get().get(0);
+
+        List<TypeHierarchyItem> subs =
+                service.typeHierarchySubtypes(new TypeHierarchySubtypesParams(animal)).get();
+
+        assertThat(subs).hasSize(1);
+        assertThat(subs.get(0).getName()).isEqualTo("Dog");
     }
 
     // ── unknown-type lint ────────────────────────────────────────────────

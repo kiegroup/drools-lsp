@@ -96,6 +96,39 @@ public final class ClassMemberIndex implements AutoCloseable {
     }
 
     /**
+     * Returns the fully-qualified names of {@code fqcn}'s direct supertypes —
+     * its superclass (omitting {@code java.lang.Object}) followed by its
+     * directly-implemented interfaces. Loaded without running static
+     * initializers; empty when the class can't be loaded. Used by type
+     * hierarchy to walk classpath ancestry one level at a time.
+     */
+    public List<String> supertypesOf(String fqcn) {
+        if (loader == null || fqcn == null || fqcn.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Class<?> clazz;
+        try {
+            clazz = Class.forName(fqcn, false, loader);
+        } catch (Throwable t) {
+            return Collections.emptyList();
+        }
+        try {
+            List<String> out = new ArrayList<>();
+            Class<?> superclass = clazz.getSuperclass();
+            if (superclass != null && superclass != Object.class) {
+                out.add(superclass.getName());
+            }
+            for (Class<?> iface : clazz.getInterfaces()) {
+                out.add(iface.getName());
+            }
+            return Collections.unmodifiableList(out);
+        } catch (Throwable t) {
+            logger.log(Level.FINE, "Failed to reflect supertypes of " + fqcn, t);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
      * The names addressable as {@code Type.X} on {@code fqcn}: public fields
      * (including enum constants and static fields, inherited included) and
      * public nested-type simple names. Returns {@code null} when the class

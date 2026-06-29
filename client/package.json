@@ -48,6 +48,12 @@
     "configuration": {
       "title": "DRL Language Server",
       "properties": {
+        "drools.lsp.logLevel": {
+          "type": "string",
+          "default": "INFO",
+          "enum": ["SEVERE", "WARNING", "INFO", "FINE", "FINER", "FINEST"],
+          "description": "Server-side log level (java.util.logging). Use FINE or FINER to surface diagnostics when debugging."
+        },
         "drools.lsp.lint.missingEnd": {
           "type": "string",
           "default": "warning",
@@ -88,6 +94,12 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Show inline type hints for DRL rule bindings (e.g. `$count : count()` → `: Long`). VSCode's global `#editor.inlayHints.enabled#` still governs whether inlay hints are displayed at all."
+        },
+        "drools.lsp.maven.pomPath": {
+          "type": ["string", "array"],
+          "items": { "type": "string" },
+          "default": "",
+          "markdownDescription": "Maven POM(s) used for dependency classpath resolution — a single path or a list of paths, each absolute or workspace-relative. Each project's classpath is resolved and the results are merged. Leave empty to use `pom.xml` at the workspace root."
         }
       }
     }

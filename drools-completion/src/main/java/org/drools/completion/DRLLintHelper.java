@@ -726,7 +726,7 @@ public final class DRLLintHelper {
         if (text == null || text.isEmpty()) {
             return Collections.emptyList();
         }
-        return lintUnknownTypes(text, DRLDeclaredTypeParser.parseSilently(text), documentPath,
+        return lintUnknownTypes(text, DRLParsers.silent(text).compilationUnit(), documentPath,
                 openFiles, classIndex, memberIndex, classpathResolved);
     }
 

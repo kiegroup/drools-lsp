@@ -3,14 +3,8 @@ package org.drools.completion;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Logger;
 
-import org.antlr.v4.runtime.BaseErrorListener;
-import org.antlr.v4.runtime.Lexer;
-import org.antlr.v4.runtime.RecognitionException;
-import org.antlr.v4.runtime.Recognizer;
 import org.drools.drl.parser.antlr4.DRL10Parser;
-import org.drools.drl.parser.antlr4.DRLParserHelper;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.MarkupContent;
 import org.eclipse.lsp4j.MarkupKind;
@@ -27,17 +21,6 @@ import org.eclipse.lsp4j.Position;
  * with the doc comment above it, classpath types as their member list.
  */
 public final class DRLHoverHelper {
-
-    private static final Logger logger = Logger.getLogger(DRLHoverHelper.class.getName());
-
-    /** Swallows ANTLR parse errors — incomplete documents are normal. */
-    private static final BaseErrorListener SILENT = new BaseErrorListener() {
-        @Override
-        public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol,
-                                int line, int charPositionInLine, String msg,
-                                RecognitionException e) {
-        }
-    };
 
     private DRLHoverHelper() {
     }
@@ -73,28 +56,21 @@ public final class DRLHoverHelper {
             return null;
         }
 
-        List<DeclaredType> currentDocTypes = DRLDeclaredTypeParser.parseDeclaredTypes(text);
+        // Parse the current document once; every step below reuses this parse.
+        ParsedDrl parsed = ParsedDrl.of(text);
+        List<DeclaredType> currentDocTypes = parsed.declaredTypes();
         Map<String, DeclaredType> typeIndex =
                 DRLWorkspaceTypeIndex.build(currentDocTypes, documentPath, openFiles);
 
         // 1. The word is itself a DRL-declared type.
         DeclaredType declared = typeIndex.get(word);
         if (declared != null) {
-            return markdown(renderDeclaredHover(declared, typeIndex, text, documentPath, openFiles));
+            return markdown(renderDeclaredHover(
+                    declared, typeIndex, currentDocTypes, text, documentPath, openFiles));
         }
 
-        DRL10Parser parser;
-        DRL10Parser.CompilationUnitContext compilationUnit;
-        Integer nodeIndex;
-        try {
-            parser = silentParser(text);
-            compilationUnit = parser.compilationUnit();
-            nodeIndex = DRLParserHelper.computeTokenIndex(
-                    parser, position.getLine() + 1, position.getCharacter());
-        } catch (Exception e) {
-            logger.fine(() -> "Hover parse failed: " + e.getMessage());
-            return null;
-        }
+        DRL10Parser.CompilationUnitContext compilationUnit = parsed.compilationUnit;
+        Integer nodeIndex = parsed.tokenIndexAt(position);
 
         // 2. Bound variable: resolve $var to its type via the shared binding
         //    engine (pattern, field, nested-path, JDK-accessor, accumulate),
@@ -108,7 +84,7 @@ public final class DRLHoverHelper {
                 DeclaredType boundDeclared = typeIndex.get(boundType);
                 if (boundDeclared != null) {
                     return markdown(renderDeclaredHover(
-                            boundDeclared, typeIndex, text, documentPath, openFiles));
+                            boundDeclared, typeIndex, currentDocTypes, text, documentPath, openFiles));
                 }
                 String boundFqcn = DRLCompletionHelper.resolveFqcn(
                         boundType, boundType, compilationUnit, classIndex);
@@ -148,12 +124,14 @@ public final class DRLHoverHelper {
      * and inherited fields.
      */
     private static String renderDeclaredHover(DeclaredType declared,
-                                              Map<String, DeclaredType> typeIndex, String text,
+                                              Map<String, DeclaredType> typeIndex,
+                                              List<DeclaredType> currentDocTypes, String text,
                                               Path documentPath, Map<Path, String> openFiles) {
         List<Field> allFields = DRLDeclaredTypeParser.fieldsIncludingInherited(declared, typeIndex);
-        String doc = DRLWorkspaceTypeIndex.docFor(declared.name, text, documentPath, openFiles);
+        String doc = DRLWorkspaceTypeIndex.docFor(
+                declared.name, currentDocTypes, text, documentPath, openFiles);
         Map<String, String> linkTargets =
-                DRLWorkspaceTypeIndex.buildLinkTargets(text, documentPath, openFiles);
+                DRLWorkspaceTypeIndex.buildLinkTargets(currentDocTypes, text, documentPath, openFiles);
         return renderDeclared(declared, allFields, doc, linkTargets);
     }
 
@@ -253,15 +231,5 @@ public final class DRLHoverHelper {
             offset++;
         }
         return Math.min(offset + position.getCharacter(), text.length());
-    }
-
-    private static DRL10Parser silentParser(String text) {
-        DRL10Parser parser = DRLParserHelper.createDrlParser(text);
-        Lexer lexer = (Lexer) parser.getTokenStream().getTokenSource();
-        lexer.removeErrorListeners();
-        lexer.addErrorListener(SILENT);
-        parser.removeErrorListeners();
-        parser.addErrorListener(SILENT);
-        return parser;
     }
 }

@@ -18,21 +18,20 @@ class MavenClasspathResolverTest {
 
     @Test
     void findPomFiles() throws IOException {
-        Files.writeString(tempDir.resolve("pom.xml"), "<project/>");
+        // Root pom declares one module; only that module's pom.xml is discovered.
+        Files.writeString(tempDir.resolve("pom.xml"),
+            "<project><modules><module>module-a</module></modules></project>");
 
         Path submodule = tempDir.resolve("module-a");
         Files.createDirectories(submodule);
         Files.writeString(submodule.resolve("pom.xml"), "<project/>");
 
-        // pom.xml inside target/ should be skipped
-        Path targetDir = tempDir.resolve("module-a/target/generated");
-        Files.createDirectories(targetDir);
-        Files.writeString(targetDir.resolve("pom.xml"), "<project/>");
-
-        // pom.xml inside hidden dir should be skipped
-        Path hiddenDir = tempDir.resolve(".hidden");
-        Files.createDirectories(hiddenDir);
-        Files.writeString(hiddenDir.resolve("pom.xml"), "<project/>");
+        // pom.xml in a non-declared sibling directory must NOT be discovered —
+        // the resolver never walks the tree, so adjacent projects cannot
+        // contaminate the class index.
+        Path siblingDir = tempDir.resolve("other-project");
+        Files.createDirectories(siblingDir);
+        Files.writeString(siblingDir.resolve("pom.xml"), "<project/>");
 
         List<Path> poms = MavenClasspathResolver.findPomFiles(tempDir);
 
@@ -40,6 +39,39 @@ class MavenClasspathResolverTest {
             tempDir.resolve("pom.xml"),
             submodule.resolve("pom.xml")
         );
+    }
+
+    @Test
+    void fallsBackToTreeWalkWhenNoRootPom() throws IOException {
+        // No pom.xml at the root: scan the tree for poms so a pom-less / nested
+        // layout still resolves a best-effort classpath (skipping target/).
+        Path projA = tempDir.resolve("proj-a");
+        Files.createDirectories(projA);
+        Files.writeString(projA.resolve("pom.xml"), "<project/>");
+
+        // pom.xml inside target/ must still be skipped by the fallback walk.
+        Path generated = tempDir.resolve("proj-a/target/generated");
+        Files.createDirectories(generated);
+        Files.writeString(generated.resolve("pom.xml"), "<project/>");
+
+        List<Path> poms = MavenClasspathResolver.findPomFiles(tempDir);
+
+        assertThat(poms).containsExactly(projA.resolve("pom.xml"));
+    }
+
+    @Test
+    void resolveBuildOutputDirsReturnsClassDirsWithoutInvokingMaven() throws IOException {
+        // A minimal project with compiled output but no resolvable dependencies.
+        // The build-output dirs must come back from the filesystem alone (no mvn),
+        // so the server can index the project's own classes before the slower
+        // dependency-JAR resolution runs.
+        Files.writeString(tempDir.resolve("pom.xml"), "<project/>");
+        Path classes = tempDir.resolve("target/classes");
+        Files.createDirectories(classes);
+
+        Set<Path> dirs = MavenClasspathResolver.resolveBuildOutputDirs(tempDir);
+
+        assertThat(dirs).contains(classes);
     }
 
     @Test
