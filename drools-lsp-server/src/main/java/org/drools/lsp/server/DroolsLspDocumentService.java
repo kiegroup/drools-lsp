@@ -479,8 +479,16 @@ public class DroolsLspDocumentService implements TextDocumentService {
         boolean mvelOn = !"off".equals(System.getProperty("drools.lsp.lint.mvelPropertyAccess", "off")
                                  .trim().toLowerCase());
         return CompletableFuture.supplyAsync(() -> {
+            // The request is scoped to a range; only offer fixes for the
+            // diagnostics that actually overlap it (a null range never does).
+            List<Diagnostic> inRange = new ArrayList<>();
+            for (Diagnostic d : contextDiagnostics) {
+                if (rangesOverlap(d.getRange(), requested)) {
+                    inRange.add(d);
+                }
+            }
             List<Either<Command, CodeAction>> actions =
-                    new ArrayList<>(buildUnknownTypeActions(uri, contextDiagnostics));
+                    new ArrayList<>(buildUnknownTypeActions(uri, inRange));
             if (mvelOn) {
                 actions.addAll(buildPropertyAccessActions(uri, text, requested));
             }
@@ -504,6 +512,11 @@ public class DroolsLspDocumentService implements TextDocumentService {
             }
             String suggestion = suggestionOf(d.getData());
             if (suggestion == null || suggestion.isBlank()) {
+                continue;
+            }
+            // A null range can arrive from a deserialized client diagnostic; it
+            // would produce an unusable TextEdit, so skip it.
+            if (d.getRange() == null) {
                 continue;
             }
             CodeAction ca = new CodeAction("Replace with '" + suggestion + "'");
