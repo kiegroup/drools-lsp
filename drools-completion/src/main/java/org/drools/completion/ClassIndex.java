@@ -59,10 +59,11 @@ public class ClassIndex {
     /**
      * The simple names of every indexed type (the index keys). Used as a typo
      * suggestion pool for the unknown-type lint, so a misspelled classpath type
-     * can be matched to the real one.
+     * can be matched to the real one. Returned as an unmodifiable view over the
+     * (effectively immutable) index to avoid copying the key set on every call.
      */
     public Set<String> simpleNames() {
-        return new java.util.HashSet<>(index.keySet());
+        return java.util.Collections.unmodifiableSet(index.keySet());
     }
 
     public List<String> getMatching(String prefix) {

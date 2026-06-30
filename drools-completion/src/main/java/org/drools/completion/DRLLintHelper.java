@@ -1047,6 +1047,9 @@ public final class DRLLintHelper {
             if (dist >= 0 && dist < bestDist) {
                 bestDist = dist;
                 best = k;
+                if (bestDist == 1) {
+                    return best;
+                }
             }
         }
         return bestDist <= 2 ? best : null;
