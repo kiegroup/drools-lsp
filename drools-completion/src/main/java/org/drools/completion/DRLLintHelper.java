@@ -1,10 +1,19 @@
 package org.drools.completion;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.antlr.v4.runtime.Token;
+import org.antlr.v4.runtime.tree.ParseTree;
+import org.drools.drl.parser.antlr4.DRL10Parser;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.eclipse.lsp4j.Position;
@@ -27,6 +36,7 @@ import org.eclipse.lsp4j.TextEdit;
  *   drools.lsp.lint.missingSeparator   = off | hint | info | warning | error
  *   drools.lsp.lint.missingSemicolon   = off | hint | info | warning | error
  *   drools.lsp.lint.unbalancedParens   = off | hint | info | warning | error
+ *   drools.lsp.lint.unknownTypes       = off | hint | info | warning | error
  *   drools.lsp.lint.mvelPropertyAccess = off | hint | info | warning | error
  * </pre>
  *
@@ -34,11 +44,14 @@ import org.eclipse.lsp4j.TextEdit;
  * pass is purely stylistic (both forms are valid DRL), so it defaults to
  * {@code off} and only runs for teams that opt in.
  *
- * <p>All methods are stateless and safe to call from multiple threads. The
- * passes operate on a sanitized copy of the text in which comments and
- * string-literal contents are blanked out (preserving line/column positions),
- * so quoted parentheses, {@code when}/{@code then} inside comments, and
- * trailing comments cannot confuse the heuristics.
+ * <p>The structural passes are stateless heuristics that operate on a sanitized
+ * copy of the text in which comments and string-literal contents are blanked
+ * out (preserving line/column positions), so quoted parentheses,
+ * {@code when}/{@code then} inside comments, and trailing comments cannot
+ * confuse them. {@link #lintUnknownTypes} is the exception: it parses the
+ * document (once) and resolves types through {@link DRLCompletionHelper#resolveFqcn}
+ * — the same resolution hover, completion, and go-to-definition use — so its
+ * notion of "known" matches the rest of the language server.
  */
 public final class DRLLintHelper {
 
@@ -46,9 +59,18 @@ public final class DRLLintHelper {
     private static final String PROP_MISSING_SEPARATOR    = "drools.lsp.lint.missingSeparator";
     private static final String PROP_MISSING_SEMICOLON    = "drools.lsp.lint.missingSemicolon";
     private static final String PROP_UNBALANCED_PARENS    = "drools.lsp.lint.unbalancedParens";
+    private static final String PROP_UNKNOWN_TYPES        = "drools.lsp.lint.unknownTypes";
     private static final String PROP_MVEL_PROPERTY_ACCESS = "drools.lsp.lint.mvelPropertyAccess";
 
     private static final int MAX_DIAGNOSTICS_PER_PASS = 20;
+    private static final int MAX_UNKNOWN_TYPE_DIAGNOSTICS = 50;
+
+    private static final Pattern THEN_END_BLOCK =
+            Pattern.compile("(?is)\\bthen\\b(.*?)\\bend\\b");
+    private static final Pattern THEN_NEW_TYPE =
+            Pattern.compile("(?is)\\bnew\\s+([A-Z][A-Za-z0-9_$.]*)\\s*\\(");
+    private static final Pattern QUALIFIED_REF =
+            Pattern.compile("(?<![\\w.$])([A-Z][A-Za-z0-9_$]*(?:\\.[A-Za-z0-9_$]+)+)");
 
     private static final Pattern RULE_KEYWORD =
             Pattern.compile("^\\s*(rule|query)\\b", Pattern.CASE_INSENSITIVE);
@@ -689,6 +711,421 @@ public final class DRLLintHelper {
             }
         }
         return out;
+    }
+
+    // ── unknown types ────────────────────────────────────────────────────
+
+    /**
+     * Convenience entry point that parses {@code text} itself, for callers with
+     * no compilation unit in hand (e.g. tests). Server requests share the syntax
+     * pass's parse through the {@code cu} overload instead.
+     */
+    public static List<Diagnostic> lintUnknownTypes(String text, Path documentPath,
+                                                    Map<Path, String> openFiles, ClassIndex classIndex,
+                                                    ClassMemberIndex memberIndex, boolean classpathResolved) {
+        if (text == null || text.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return lintUnknownTypes(text, DRLParsers.silent(text).compilationUnit(), documentPath,
+                openFiles, classIndex, memberIndex, classpathResolved);
+    }
+
+    /**
+     * Flags type references that resolve to no known type and, for likely typos
+     * (within bounded Levenshtein ≤ 2 of a known name), suggests the right one.
+     * Candidates come from three sources:
+     * <ul>
+     *   <li>pattern object types, read from the parse tree (so nested
+     *       {@code exists}/{@code not}/{@code from}/{@code accumulate} patterns
+     *       are covered);</li>
+     *   <li>upper-case-led qualified references in LHS constraints, e.g.
+     *       {@code Pet.Dog.name} — the head type is
+     *       resolved, then the first upper-case member segment is verified
+     *       against the head's reflected members (enum constants, fields, nested
+     *       types); lower-case property segments are not chased;</li>
+     *   <li>{@code new T(...)} in the consequence, matched by regex — the RHS is
+     *       lexed into opaque chunks the grammar does not structure.</li>
+     * </ul>
+     * A type is known when it is a declared type or resolves via
+     * {@link DRLCompletionHelper#resolveFqcn} (imports, wildcard imports, the
+     * class index, or {@code java.lang}) — the same resolution hover, completion
+     * and go-to-definition use. The caller supplies the parsed {@code cu}
+     * (shared with the syntax pass) and it is reused here for declared-type
+     * extraction. Self-gated by {@code drools.lsp.lint.unknownTypes}
+     * (default {@code warning}; {@code off} disables).
+     *
+     * @param cu                the parsed compilation unit (shared with the syntax pass); may be {@code null}
+     * @param documentPath      document path for sibling declared-type lookup; may be {@code null}
+     * @param openFiles         open unsaved sibling buffers, so cross-file declares count; may be empty
+     * @param classIndex        resolved classpath index, for type resolution and suggestions
+     * @param memberIndex       member reflection, for verifying classpath qualified-reference members
+     * @param classpathResolved whether the project classpath has resolved; when {@code false}, only
+     *                          checks derivable from the DRL alone run (declared types and declared-enum
+     *                          members), since a non-declared name can't be confirmed unknown without it
+     */
+    public static List<Diagnostic> lintUnknownTypes(String text, DRL10Parser.CompilationUnitContext cu,
+                                                    Path documentPath, Map<Path, String> openFiles,
+                                                    ClassIndex classIndex, ClassMemberIndex memberIndex,
+                                                    boolean classpathResolved) {
+        if (text == null || text.isEmpty() || cu == null) {
+            return Collections.emptyList();
+        }
+        DiagnosticSeverity severity = severityFor(PROP_UNKNOWN_TYPES, "warning");
+        if (severity == null) {
+            return Collections.emptyList();
+        }
+        // Strings/comments are blanked so type-like text inside them can't match;
+        // the cu and the sanitized text share character positions.
+        String sanitized = sanitize(text);
+
+        // Declared types of the document + siblings, kept as full types so a
+        // declared enum's constants can be verified for qualified references.
+        Map<String, DeclaredType> declared = new HashMap<>();
+        for (DeclaredType dt : DRLDeclaredTypeParser.extractFromCompilationUnit(cu)) {
+            if (dt.name != null) {
+                declared.putIfAbsent(dt.name, dt);
+            }
+        }
+        DRLWorkspaceTypeIndex.forEachSiblingType(documentPath, openFiles, (dt, uri) -> {
+            if (dt.name != null) {
+                declared.putIfAbsent(dt.name, dt);
+            }
+        });
+        Set<String> known = declared.keySet();
+        // Typo suggestions are drawn from declared types plus classpath simple names.
+        Set<String> suggestions = new HashSet<>(known);
+        suggestions.addAll(classIndex.simpleNames());
+
+        List<Diagnostic> out = new ArrayList<>();
+        collectPatternTypes(cu, cu, known, suggestions, classIndex, classpathResolved, severity, out);
+        scanQualifiedRefs(cu, sanitized, declared, suggestions, cu, classIndex, memberIndex,
+                          classpathResolved, severity, out);
+
+        Matcher then = THEN_END_BLOCK.matcher(sanitized);
+        while (then.find() && out.size() < MAX_UNKNOWN_TYPE_DIAGNOSTICS) {
+            int base = then.start(1);
+            Matcher newType = THEN_NEW_TYPE.matcher(then.group(1));
+            while (newType.find() && out.size() < MAX_UNKNOWN_TYPE_DIAGNOSTICS) {
+                Range range = rangeOf(sanitized, base + newType.start(1), base + newType.end(1));
+                addUnknown(newType.group(1), range, known, suggestions, cu, classIndex,
+                           classpathResolved, severity, out);
+            }
+        }
+        return out;
+    }
+
+    /** Walks {@code node}, checking each pattern's object type against {@code cu}'s resolution. */
+    private static void collectPatternTypes(ParseTree node, DRL10Parser.CompilationUnitContext cu,
+                                            Set<String> known, Set<String> suggestions,
+                                            ClassIndex classIndex, boolean classpathResolved,
+                                            DiagnosticSeverity severity, List<Diagnostic> out) {
+        if (out.size() >= MAX_UNKNOWN_TYPE_DIAGNOSTICS) {
+            return;
+        }
+        if (node instanceof DRL10Parser.LhsPatternContext pattern && pattern.objectType != null) {
+            Token start = pattern.objectType.getStart();
+            Token stop = pattern.objectType.getStop();
+            if (start != null && stop != null) {
+                Range range = new Range(
+                        new Position(start.getLine() - 1, start.getCharPositionInLine()),
+                        new Position(stop.getLine() - 1,
+                                     stop.getCharPositionInLine() + stop.getText().length()));
+                addUnknown(pattern.objectType.getText(), range, known, suggestions, cu, classIndex,
+                           classpathResolved, severity, out);
+            }
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            collectPatternTypes(node.getChild(i), cu, known, suggestions, classIndex, classpathResolved,
+                                severity, out);
+        }
+    }
+
+    /**
+     * Walks {@code node} for {@code when} sections and checks every upper-case-led
+     * qualified reference in each (constraints carry these inside expression
+     * subtrees, so the chain is located by regex over the section's text and
+     * resolution stays with {@link DRLCompletionHelper#resolveFqcn} / the member
+     * index).
+     */
+    private static void scanQualifiedRefs(ParseTree node, String sanitized,
+                                          Map<String, DeclaredType> declared, Set<String> suggestions,
+                                          DRL10Parser.CompilationUnitContext cu, ClassIndex classIndex,
+                                          ClassMemberIndex memberIndex, boolean classpathResolved,
+                                          DiagnosticSeverity severity, List<Diagnostic> out) {
+        if (out.size() >= MAX_UNKNOWN_TYPE_DIAGNOSTICS) {
+            return;
+        }
+        if (node instanceof DRL10Parser.LhsContext lhs && lhs.getStart() != null && lhs.getStop() != null) {
+            int start = lhs.getStart().getStartIndex();
+            int stop = lhs.getStop().getStopIndex();
+            if (start >= 0 && stop >= start && stop < sanitized.length()) {
+                Matcher m = QUALIFIED_REF.matcher(sanitized.substring(start, stop + 1));
+                while (m.find() && out.size() < MAX_UNKNOWN_TYPE_DIAGNOSTICS) {
+                    checkChain(m.group(1), start + m.start(1), sanitized, declared, suggestions,
+                               cu, classIndex, memberIndex, classpathResolved, severity, out);
+                }
+            }
+            return; // the section's whole text is covered; no nested when-sections
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            scanQualifiedRefs(node.getChild(i), sanitized, declared, suggestions, cu, classIndex,
+                              memberIndex, classpathResolved, severity, out);
+        }
+    }
+
+    /**
+     * Checks the head type and first upper-case member of a qualified chain like
+     * {@code QuestionIds.TargetResponse.groupType}. The head is verified against
+     * declared types and {@link DRLCompletionHelper#resolveFqcn}; the member is
+     * verified against a declared enum's constants (no classpath needed) or a
+     * resolved classpath type's reflected members. A lower-case member (a
+     * property) is not chased.
+     */
+    private static void checkChain(String chain, int chainStart, String sanitized,
+                                   Map<String, DeclaredType> declared, Set<String> suggestions,
+                                   DRL10Parser.CompilationUnitContext cu, ClassIndex classIndex,
+                                   ClassMemberIndex memberIndex, boolean classpathResolved,
+                                   DiagnosticSeverity severity, List<Diagnostic> out) {
+        int dot = chain.indexOf('.');
+        String head = chain.substring(0, dot);
+        int memberStart = dot + 1;
+        int nextDot = chain.indexOf('.', memberStart);
+        String member = nextDot < 0 ? chain.substring(memberStart) : chain.substring(memberStart, nextDot);
+        boolean memberIsType = !member.isEmpty() && Character.isUpperCase(member.charAt(0));
+
+        DeclaredType headType = declared.get(head);
+        if (headType != null) {
+            // Declared head. Only an enum exposes verifiable Type.MEMBER access
+            // (its constants); other declares have no static members to check.
+            if (headType.isEnum && memberIsType) {
+                Set<String> names = declaredMemberNames(headType);
+                if (!names.contains(member)) {
+                    out.add(memberWarning(member, head, memberRange(sanitized, chainStart, memberStart, member),
+                            bestTypoSuggestion(member, names), severity));
+                }
+            }
+            return;
+        }
+
+        // Classpath head.
+        String headFqcn = DRLCompletionHelper.resolveFqcn(head, head, cu, classIndex);
+        if (headFqcn == null) {
+            // Can't be sure it's a typo vs an unresolved real classpath type.
+            if (classpathResolved) {
+                out.add(makeUnknownTypeWarning(head,
+                        rangeOf(sanitized, chainStart, chainStart + head.length()),
+                        bestTypoSuggestion(head, suggestions), severity));
+            }
+            return;
+        }
+        if (!memberIsType) {
+            return; // a property (lower-case) — not chased
+        }
+        Set<String> members = memberIndex.memberNames(headFqcn);
+        if (members == null || members.contains(member)) {
+            return; // head not loadable (can't verify) or member is valid
+        }
+        out.add(memberWarning(member, toSimpleTypeName(head),
+                memberRange(sanitized, chainStart, memberStart, member),
+                bestTypoSuggestion(member, members), severity));
+    }
+
+    private static Range memberRange(String sanitized, int chainStart, int memberStart, String member) {
+        return rangeOf(sanitized, chainStart + memberStart, chainStart + memberStart + member.length());
+    }
+
+    /** Field and enum-constant names declared on {@code dt} (its own members). */
+    private static Set<String> declaredMemberNames(DeclaredType dt) {
+        Set<String> names = new HashSet<>();
+        if (dt.fields != null) {
+            for (Field f : dt.fields) {
+                if (f != null && f.name != null) {
+                    names.add(f.name);
+                }
+            }
+        }
+        return names;
+    }
+
+    /**
+     * Emits an unknown-type warning for {@code candidate} unless it is a declared
+     * type or resolves. When the classpath is unresolved a non-resolving name is
+     * left alone — it can't be told apart from a real-but-unindexed type.
+     */
+    private static void addUnknown(String candidate, Range range, Set<String> known,
+                                   Set<String> suggestions, DRL10Parser.CompilationUnitContext cu,
+                                   ClassIndex classIndex, boolean classpathResolved,
+                                   DiagnosticSeverity severity, List<Diagnostic> out) {
+        if (candidate == null) {
+            return;
+        }
+        String trimmed = candidate.trim();
+        if (trimmed.isEmpty()) {
+            return;
+        }
+        String simple = toSimpleTypeName(trimmed);
+        if (known.contains(simple)
+                || DRLCompletionHelper.resolveFqcn(trimmed, simple, cu, classIndex) != null) {
+            return;
+        }
+        if (!classpathResolved) {
+            return;
+        }
+        out.add(makeUnknownTypeWarning(trimmed, range, bestTypoSuggestion(simple, suggestions), severity));
+    }
+
+    private static Range rangeOf(String text, int startOffset, int endOffset) {
+        return new Range(offsetToPosition(text, startOffset), offsetToPosition(text, endOffset));
+    }
+
+    private static Diagnostic memberWarning(String member, String container, Range range,
+                                            String suggestion, DiagnosticSeverity severity) {
+        Diagnostic d = new Diagnostic();
+        d.setSeverity(severity);
+        d.setSource("drools-type");
+        d.setCode("unknown-member");
+        d.setRange(range);
+        String msg = "'" + member + "' is not a member of '" + container + "'";
+        if (suggestion != null && !suggestion.isBlank() && !suggestion.equals(member)) {
+            msg += ". Did you mean '" + suggestion + "'?";
+            d.setData(suggestion); // drives the "Replace with '<suggestion>'" quick-fix
+        } else {
+            msg += ".";
+        }
+        d.setMessage(msg);
+        return d;
+    }
+
+    private static Diagnostic makeUnknownTypeWarning(String candidate, Range range,
+                                                     String suggestion, DiagnosticSeverity severity) {
+        Diagnostic d = new Diagnostic();
+        d.setSeverity(severity);
+        d.setSource("drools-type");
+        d.setCode("unknown-type");
+        d.setRange(range);
+
+        String msg = "Unknown type '" + candidate + "'";
+        if (suggestion != null && !suggestion.isBlank() && !suggestion.equals(candidate)) {
+            msg += " (possible typo). Did you mean '" + suggestion + "'?";
+            // The quick-fix reads this to offer "Replace with '<suggestion>'".
+            d.setData(suggestion);
+        } else {
+            msg += ".";
+        }
+        msg += " If this is a Java type, add an import or ensure it is on the resolved classpath.";
+        d.setMessage(msg);
+        return d;
+    }
+
+    /**
+     * Closest known simple name to {@code candidateSimple} within edit distance
+     * 2 (a likely typo), or {@code null} when nothing is close enough. Exact
+     * matches return {@code null} — the caller only reaches here for unknowns.
+     */
+    static String bestTypoSuggestion(String candidateSimple, Set<String> knownSimpleNames) {
+        if (candidateSimple == null || candidateSimple.isBlank()
+                || knownSimpleNames == null || knownSimpleNames.isEmpty()) {
+            return null;
+        }
+        String c = candidateSimple.trim();
+        if (c.length() < 2) {
+            return null;
+        }
+        String best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (String k : knownSimpleNames) {
+            if (k == null || k.isBlank()) {
+                continue;
+            }
+            if (k.equals(c)) {
+                return null;
+            }
+            if (Math.abs(k.length() - c.length()) > 2) {
+                continue;
+            }
+            int dist = levenshteinDistanceAtMost(c, k, 2);
+            if (dist >= 0 && dist < bestDist) {
+                bestDist = dist;
+                best = k;
+                if (bestDist == 1) {
+                    return best;
+                }
+            }
+        }
+        return bestDist <= 2 ? best : null;
+    }
+
+    /** Levenshtein distance between {@code a} and {@code b}, or -1 once it exceeds {@code max}. */
+    private static int levenshteinDistanceAtMost(String a, String b, int max) {
+        if (a == null || b == null) {
+            return -1;
+        }
+        int n = a.length();
+        int m = b.length();
+        if (Math.abs(n - m) > max) {
+            return -1;
+        }
+        if (n == 0) {
+            return m <= max ? m : -1;
+        }
+        if (m == 0) {
+            return n <= max ? n : -1;
+        }
+        if (n > m) {
+            String tmp = a;
+            a = b;
+            b = tmp;
+            n = a.length();
+            m = b.length();
+        }
+        int[] prev = new int[n + 1];
+        int[] cur = new int[n + 1];
+        for (int i = 0; i <= n; i++) {
+            prev[i] = i;
+        }
+        for (int j = 1; j <= m; j++) {
+            char bj = b.charAt(j - 1);
+            cur[0] = j;
+            int rowMin = cur[0];
+            for (int i = 1; i <= n; i++) {
+                int cost = a.charAt(i - 1) == bj ? 0 : 1;
+                cur[i] = Math.min(prev[i] + 1, Math.min(cur[i - 1] + 1, prev[i - 1] + cost));
+                if (cur[i] < rowMin) {
+                    rowMin = cur[i];
+                }
+            }
+            if (rowMin > max) {
+                return -1;
+            }
+            int[] tmp = prev;
+            prev = cur;
+            cur = tmp;
+        }
+        return prev[n] <= max ? prev[n] : -1;
+    }
+
+    static String toSimpleTypeName(String candidate) {
+        if (candidate == null) {
+            return "";
+        }
+        int idx = Math.max(candidate.lastIndexOf('.'), candidate.lastIndexOf('$'));
+        return idx >= 0 && idx < candidate.length() - 1 ? candidate.substring(idx + 1) : candidate;
+    }
+
+    /** Converts an absolute character offset into a 0-based line/column position. */
+    private static Position offsetToPosition(String text, int offset) {
+        int line = 0;
+        int col = 0;
+        int end = Math.min(offset, text.length());
+        for (int i = 0; i < end; i++) {
+            if (text.charAt(i) == '\n') {
+                line++;
+                col = 0;
+            } else {
+                col++;
+            }
+        }
+        return new Position(line, col);
     }
 
     // ── shared helpers ───────────────────────────────────────────────────

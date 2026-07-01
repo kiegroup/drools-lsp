@@ -100,6 +100,7 @@ export function activate(context: vscode.ExtensionContext) {
             'drools.lsp.lint.missingSeparator',
             'drools.lsp.lint.missingSemicolon',
             'drools.lsp.lint.unbalancedParens',
+            'drools.lsp.lint.unknownTypes',
             'drools.lsp.lint.mvelPropertyAccess',
         ];
         for (const prop of lintProps) {

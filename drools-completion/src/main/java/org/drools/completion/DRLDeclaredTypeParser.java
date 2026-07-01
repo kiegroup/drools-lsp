@@ -80,17 +80,13 @@ public final class DRLDeclaredTypeParser {
      * ignored so partial files still yield partial results.
      */
     static List<DeclaredType> parseDeclaredTypes(String text) {
-        List<DeclaredType> types = new ArrayList<>();
-        if (text == null || text.isBlank()) {
-            return types;
-        }
         try {
-            DRL10Parser parser = DRLParsers.silent(text);
-            return extractFromCompilationUnit(parser.compilationUnit());
+            DRL10Parser.CompilationUnitContext cu = DRLParsers.silent(text).compilationUnit();
+            return cu == null ? new ArrayList<>() : extractFromCompilationUnit(cu);
         } catch (Exception e) {
             logger.fine(() -> "Failed to parse DRL for declared types: " + e.getMessage());
+            return new ArrayList<>();
         }
-        return types;
     }
 
     /**

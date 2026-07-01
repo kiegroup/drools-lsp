@@ -118,13 +118,38 @@ public class DroolsLspDocumentService implements TextDocumentService {
      */
     List<Diagnostic> validate(String uri) {
         String text = sourcesMap.get(uri);
-        List<Diagnostic> diagnostics = new ArrayList<>(DRLDiagnosticHelper.validate(text));
+        // Parse once and share the tree between the syntax pass and the
+        // unknown-type lint; the structural lint passes are parser-free.
+        DRLDiagnosticHelper.Parsed parsed = DRLDiagnosticHelper.parse(text);
+        List<Diagnostic> diagnostics = new ArrayList<>(parsed.diagnostics);
         try {
             diagnostics.addAll(DRLLintHelper.lint(text));
         } catch (Exception e) {
             logger.log(Level.WARNING, "Lint pass failed for " + uri, e);
         }
+        try {
+            diagnostics.addAll(unknownTypeDiagnostics(uri, text, parsed));
+        } catch (Exception e) {
+            logger.log(Level.WARNING, "Unknown-type lint failed for " + uri, e);
+        }
         return diagnostics;
+    }
+
+    /**
+     * Unknown-type warnings for {@code text}. Declared types and declared-enum
+     * members are checked from the DRL alone; checks that need the classpath
+     * (is a non-declared name a real type?) only flag once it has resolved
+     * ({@code classIndex} non-empty), so an unresolved workspace doesn't make
+     * every classpath/{@code java.lang} reference look unknown.
+     */
+    private List<Diagnostic> unknownTypeDiagnostics(String uri, String text,
+                                                    DRLDiagnosticHelper.Parsed parsed) {
+        if (text == null || text.isEmpty()) {
+            return Collections.emptyList();
+        }
+        Path documentPath = toPath(uri);
+        return DRLLintHelper.lintUnknownTypes(text, parsed.compilationUnit, documentPath,
+                openSiblings(documentPath), classIndex, classMemberIndex, classIndex.size() > 0);
     }
 
     @Override
@@ -441,21 +466,81 @@ public class DroolsLspDocumentService implements TextDocumentService {
         if (params == null || params.getTextDocument() == null || params.getRange() == null) {
             return CompletableFuture.completedFuture(Collections.emptyList());
         }
-        // No quick-fixes when the MVEL lint pass is disabled — diagnostics won't be
-        // shown, so offering fixes for them would be confusing.
-        String mvelProp = System.getProperty("drools.lsp.lint.mvelPropertyAccess", "off")
-                                 .trim().toLowerCase();
-        if ("off".equals(mvelProp)) {
-            return CompletableFuture.completedFuture(Collections.emptyList());
-        }
         String uri = params.getTextDocument().getUri();
         String text = sourcesMap.get(uri);
         if (text == null) {
             return CompletableFuture.completedFuture(Collections.emptyList());
         }
         Range requested = params.getRange();
-        return CompletableFuture.supplyAsync(
-                () -> buildPropertyAccessActions(uri, text, requested));
+        List<Diagnostic> contextDiagnostics =
+                params.getContext() != null && params.getContext().getDiagnostics() != null
+                        ? params.getContext().getDiagnostics()
+                        : Collections.emptyList();
+        boolean mvelOn = !"off".equals(System.getProperty("drools.lsp.lint.mvelPropertyAccess", "off")
+                                 .trim().toLowerCase());
+        return CompletableFuture.supplyAsync(() -> {
+            // The request is scoped to a range; only offer fixes for the
+            // diagnostics that actually overlap it (a null range never does).
+            List<Diagnostic> inRange = new ArrayList<>();
+            for (Diagnostic d : contextDiagnostics) {
+                if (rangesOverlap(d.getRange(), requested)) {
+                    inRange.add(d);
+                }
+            }
+            List<Either<Command, CodeAction>> actions =
+                    new ArrayList<>(buildUnknownTypeActions(uri, inRange));
+            if (mvelOn) {
+                actions.addAll(buildPropertyAccessActions(uri, text, requested));
+            }
+            return actions;
+        });
+    }
+
+    /**
+     * Builds "Replace with '&lt;suggestion&gt;'" quick-fixes from the
+     * unknown-type ({@code drools-type}) diagnostics the client passed in the
+     * request context; the suggested name rides in each diagnostic's
+     * {@code data}. Diagnostics without a suggestion (genuinely unknown, no
+     * near-match) yield no fix.
+     */
+    static List<Either<Command, CodeAction>> buildUnknownTypeActions(
+            String uri, List<Diagnostic> diagnostics) {
+        List<Either<Command, CodeAction>> actions = new ArrayList<>();
+        for (Diagnostic d : diagnostics) {
+            if (!"drools-type".equals(d.getSource())) {
+                continue;
+            }
+            String suggestion = suggestionOf(d.getData());
+            if (suggestion == null || suggestion.isBlank()) {
+                continue;
+            }
+            // A null range can arrive from a deserialized client diagnostic; it
+            // would produce an unusable TextEdit, so skip it.
+            if (d.getRange() == null) {
+                continue;
+            }
+            CodeAction ca = new CodeAction("Replace with '" + suggestion + "'");
+            ca.setKind(CodeActionKind.QuickFix);
+            ca.setDiagnostics(Collections.singletonList(d));
+            ca.setEdit(workspaceEdit(uri,
+                    Collections.singletonList(new TextEdit(d.getRange(), suggestion))));
+            actions.add(Either.forRight(ca));
+        }
+        return actions;
+    }
+
+    /** The suggestion stashed in a diagnostic's {@code data} (String or gson primitive). */
+    private static String suggestionOf(Object data) {
+        if (data == null) {
+            return null;
+        }
+        if (data instanceof String s) {
+            return s;
+        }
+        if (data instanceof com.google.gson.JsonPrimitive primitive) {
+            return primitive.getAsString();
+        }
+        return data.toString();
     }
 
     /**
