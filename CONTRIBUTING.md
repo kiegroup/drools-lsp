@@ -41,9 +41,7 @@ npm run pack:dev
 2. Go to `client/` and run `npm ci`
 3. Open the `client/` directory in VS Code: `code .`
 4. Select `Run and Debug` (Ctrl+Shift+D) and start `Run Extension`
-5. A new Extension Development Host window will appear with the DRL extension enabled
-6. To inspect server-side events, add `server.getClient().showMessage(new MessageParams(MessageType.Info, {text}));` in server-side code
-
+6. To inspect server-side events, add `server.getClient().showMessage(new MessageParams(MessageType.Info, "your message"));` in server-side code
 ### Connected remote server (debug)
 
 1. Build the server: `mvn clean install`
