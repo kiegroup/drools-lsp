@@ -41,7 +41,9 @@ npm run pack:dev
 2. Go to `client/` and run `npm ci`
 3. Open the `client/` directory in VS Code: `code .`
 4. Select `Run and Debug` (Ctrl+Shift+D) and start `Run Extension`
-6. To inspect server-side events, add `server.getClient().showMessage(new MessageParams(MessageType.Info, "your message"));` in server-side code
+5. A new Extension Development Host window will appear with the DRL extension enabled
+6. Server-side log messages appear in the VS Code Output channel (select "DRL Language Server" from the dropdown). Use `logger.info(msg)` or `logger.log(Level.FINE, msg)` in server-side code. The log level is configurable via the `drools.lsp.logLevel` extension setting.
+
 ### Connected remote server (debug)
 
 1. Build the server: `mvn clean install`

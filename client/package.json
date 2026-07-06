@@ -107,7 +107,7 @@
     "pretest": "mvn -f src/testFixture/pom.xml -ntp compile && npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "node ./out/test/runTest.js",
-    "pack:dev": "mkdir -p ./dist; vsce package --githubBranch main -o ./dist/"
+    "pack:dev": "node -e \"require('fs').mkdirSync('dist', { recursive: true })\" && vsce package --githubBranch main -o ./dist/"
   },
   "devDependencies": {
     "@types/glob": "7.2.0",

@@ -26,6 +26,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and development se
 
 [Neovim](https://neovim.io/) Usage
 ===
+Neovim connects to the drools-lsp-server directly, bypassing the VS Code client extension. Not all features have been confirmed in Neovim — if you find missing functionality, please report it via [GitHub Issues](https://github.com/kiegroup/drools-lsp/issues), ideally with a pull request.
+
 Neovim has [built-in](https://neovim.io/doc/user/lsp.html) LSP support, however client configuration is a manual process. It can be made a lot easier, though, if you leverage some of the many plugins available to do the hard parts for you, as you will see in the example below. _Please note:_
 - Neovim will connect to the drools-lsp-server directly, bypassing the VSCode client extension.
 - You are required to have a java runtime environment installed on your system, either with the `JAVA_HOME` environment variable set, or with the `java` command locatable in your `PATH`.

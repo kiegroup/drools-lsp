@@ -47,6 +47,8 @@ Language support for [DRL (Drools Rule Language)](https://docs.drools.org/latest
 
 All lint settings accept: `off`, `hint`, `info`, `warning`, `error`.
 
+Some features can be further configured using VS Code's built-in settings, such as `editor.inlayHints.enabled` for inlay hint visibility and `editor.folding` for folding range behavior.
+
 ## Known Issues
 
 If you find any issues, please report them in [GitHub Issues](https://github.com/kiegroup/drools-lsp/issues).
