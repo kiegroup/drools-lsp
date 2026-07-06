@@ -1,24 +1,54 @@
-# DRL (Drools Rule Language) Editor Extension
+# DRL Editor
 
-This extension provides syntax highlighting and code completion for DRL files.
+Language support for [DRL (Drools Rule Language)](https://docs.drools.org/latest/drools-docs/drools/language-reference/index.html) files in Visual Studio Code, powered by a dedicated [Language Server](https://microsoft.github.io/language-server-protocol/).
+
+## Requirements
+
+- Java 17 or later (`JAVA_HOME` must be set or `java` must be on your `PATH`)
+- Maven (for classpath resolution of Java types used in rules)
 
 ## Features
 
+### Code Editing
 - Syntax highlighting
-- Code completion
+- Code completion for grammar keywords, Java class names, fields/properties, and DRL `declare` types
+- Inlay hints for bound variables
+- Live class index refresh on recompile (no server restart required)
 
-## How to build
+### Navigation
+- Go-to definition for DRL and Java types
+- Find references for DRL types and bound variables
+- Rename for DRL declared types and bound variables
+- Document symbols (outline view)
+- Type hierarchy for DRL types
+- Folding ranges for DRL blocks and comments
 
-Under `client` directory, run:
+### Diagnostics
+- Syntax error reporting
+- Lint diagnostics (missing `end`, missing separators, unbalanced parentheses, etc.)
+- Unknown-type lint with typo quick-fix for DRL-declared types
 
-```bash
-npm ci
-npm run pack:dev
-```
+### Information
+- Hover tooltips for DRL/Java types with doc-comment rendering
+- Reference-count code lens for DRL declared types
 
-vsix file will be generated in `dist` directory.
+## Extension Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `drools.lsp.logLevel` | `INFO` | Server-side log level |
+| `drools.lsp.lint.missingEnd` | `warning` | Severity for missing `end` keyword |
+| `drools.lsp.lint.missingSeparator` | `warning` | Severity for missing constraint separator |
+| `drools.lsp.lint.missingSemicolon` | `warning` | Severity for missing semicolon in consequence |
+| `drools.lsp.lint.unbalancedParens` | `warning` | Severity for unbalanced parentheses |
+| `drools.lsp.lint.mvelPropertyAccess` | `off` | Hint to prefer property-access style over getter calls in LHS |
+| `drools.lsp.inlayHints.enabled` | `true` | Show inline type hints for bound variables |
+| `drools.lsp.maven.pomPath` | `""` | Maven POM path(s) for classpath resolution |
+
+All lint settings accept: `off`, `hint`, `info`, `warning`, `error`.
+
+Some features can be further configured using VS Code's built-in settings, such as `editor.inlayHints.enabled` for inlay hint visibility and `editor.folding` for folding range behavior.
 
 ## Known Issues
 
-- Code completion may suggest words that are not valid in the current context
-- This is alpha version. If you find any issues, please report them in [github issues](https://github.com/kiegroup/drools-lsp/issues)
+If you find any issues, please report them in [GitHub Issues](https://github.com/kiegroup/drools-lsp/issues).

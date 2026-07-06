@@ -1,4 +1,4 @@
-name: Java CI
+name: Release
 
 permissions:
   contents: write
@@ -21,9 +21,35 @@ jobs:
           distribution: 'adopt'
 
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
       - name: Build with Maven
-        run: mvn --batch-mode --update-snapshots verify
-      - run: mkdir staging && cp drools-lsp-server/target/drools-lsp-server-jar-with-dependencies.jar staging
+        run: mvn --batch-mode --update-snapshots -ntp install
+
+      - name: Install Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 20.x
+
+      - name: Set version from tag
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          cd client
+          npm version "$VERSION" --no-git-tag-version
+
+      - name: Package VS Code Extension
+        working-directory: ./client
+        run: |
+          npm ci
+          npx vsce package --githubBranch main -o ./dist/
+
+      - name: Publish to VS Code Marketplace
+        working-directory: ./client
+        run: npx vsce publish --packagePath dist/*.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - run: mkdir staging && cp drools-lsp-server/target/drools-lsp-server-jar-with-dependencies.jar staging && cp client/dist/*.vsix staging
 
       - uses: "marvinpinto/action-automatic-releases@919008cf3f741b179569b7a6fb4d8860689ab7f0" # v1.2.1
         with:
@@ -31,3 +57,4 @@ jobs:
           prerelease: false
           files: |
             staging/*.jar
+            staging/*.vsix

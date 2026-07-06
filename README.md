@@ -22,28 +22,12 @@ The server part is composed of three modules:
 3. Open a `.drl` file and start editing
 
 ### Developer notes
-**Precompiled-server - no debug**
-1. package server side code with `mvn clean package`
-2. goto `client` directory
-3. issue `npm ci`
-4. issue `code .` to start VSCode in that directory
-5. inside VSCode, select `Run and Debug` (Ctrl+Shift+D) and then start `Run Extension`
-6. a new `Extension Development Host` window will appear, with `drl` extension enabled
-7. to "debug" server-side event, add `server.getClient().showMessage(new MessageParams(MessageType.Info, {text}));` in server-side code
-
-**Connected remote server - debug**
-1. package server side code with `mvn clean package`
-2. start server with `DroolsLspTCPLauncher` from IDE on debug mode; this will start the LSP-server listening on port `9925`
-3. goto `client` directory
-4. issue `npm ci`
-5. issue `code .` to start VSCode in that directory
-6. inside VSCode, select `Run and Debug` (Ctrl+Shift+D) and then start `Debug Extension`
-7. the extensions will establish a connection to the server running at port `9925`
-8. a new `Extension Development Host` window will appear, with `drl` extension enabled
-9. to "debug" server-side event, add breakpoints in server-side code
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and development setup.
 
 [Neovim](https://neovim.io/) Usage
 ===
+Neovim connects to the drools-lsp-server directly, bypassing the VS Code client extension. Not all features have been confirmed in Neovim — if you find missing functionality, please report it via [GitHub Issues](https://github.com/kiegroup/drools-lsp/issues), ideally with a pull request.
+
 Neovim has [built-in](https://neovim.io/doc/user/lsp.html) LSP support, however client configuration is a manual process. It can be made a lot easier, though, if you leverage some of the many plugins available to do the hard parts for you, as you will see in the example below. _Please note:_
 - Neovim will connect to the drools-lsp-server directly, bypassing the VSCode client extension.
 - You are required to have a java runtime environment installed on your system, either with the `JAVA_HOME` environment variable set, or with the `java` command locatable in your `PATH`.

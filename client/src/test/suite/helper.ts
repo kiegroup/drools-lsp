@@ -12,11 +12,11 @@ export let documentEol: string;
 export let platformEol: string;
 
 /**
- * Activates the kie-group.drools extension
+ * Activates the drl-editor extension
  */
 export async function activate(docUri: vscode.Uri) {
 	// The extensionId is `publisher.name` from package.json
-	const ext = vscode.extensions.getExtension('kie-group.vscode-extension-drl-editor')!;
+	const ext = vscode.extensions.getExtension('drl-editor.vscode-extension-drl-editor')!;
 	await ext.activate();
 	try {
 		doc = await vscode.workspace.openTextDocument(docUri);
