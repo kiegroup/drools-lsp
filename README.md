@@ -17,9 +17,10 @@ The server part is composed of three modules:
 [VSCode](https://code.visualstudio.com/) Usage
 ===
 
-1. Download the latest release of `vscode-extension-drl-editor-<version>.vsix` from [here](https://github.com/kiegroup/drools-lsp/releases)
-2. Install the extension in VSCode by selecting `Extensions` (Ctrl+Shift+X) and then `...` (top-right corner) and `Install from VSIX...` to install the downloaded file
-3. Open a `.drl` file and start editing
+1. Install the [DRL Editor](https://marketplace.visualstudio.com/items?itemName=drl-editor.vscode-extension-drl-editor) extension from the VS Code Marketplace (search "DRL Editor" in Extensions, or `Ctrl+Shift+X`)
+2. Open a `.drl` file and start editing
+
+Alternatively, download a `.vsix` file from [GitHub Releases](https://github.com/kiegroup/drools-lsp/releases) and install manually via `Extensions` → `...` → `Install from VSIX...`.
 
 ### Developer notes
 See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and development setup.

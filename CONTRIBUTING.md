@@ -59,22 +59,22 @@ npm run pack:dev
 
 Releases are driven by git tags. To publish a new version (e.g. `1.0.1`):
 
-1. Update `pom.xml` version from `X.Y.Z-SNAPSHOT` to `1.0.1`
-2. Commit and push to `main`:
+1. Update `pom.xml` version from `X.Y.Z-SNAPSHOT` to `1.0.1` (all modules including `client/src/testFixture/pom.xml` dependency)
+2. Commit and push to the upstream `main` branch:
    ```bash
    git commit -am "Release 1.0.1"
-   git push origin main
+   git push upstream main
    ```
-3. Tag the commit and push the tag:
+3. Tag the commit and push the tag to upstream:
    ```bash
    git tag v1.0.1
-   git push origin v1.0.1
+   git push upstream v1.0.1
    ```
 4. The `release.yml` workflow will:
    - Build the server JAR
    - Set the extension version from the tag
    - Package and publish the `.vsix` to the VS Code Marketplace
    - Create a GitHub Release with the JAR and VSIX attached
-5. After the release, bump `pom.xml` to the next snapshot (e.g. `1.0.2-SNAPSHOT`) and push to `main`
+5. After the release, bump `pom.xml` to the next snapshot (e.g. `1.0.2-SNAPSHOT`) and push to upstream `main`
 
 The `VSCE_PAT` repository secret must be configured for Marketplace publishing.

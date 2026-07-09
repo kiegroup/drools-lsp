@@ -7,7 +7,7 @@
   <parent>
     <groupId>org.drools</groupId>
     <artifactId>drools-lsp</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1-SNAPSHOT</version>
   </parent>
 
   <artifactId>drools-parser</artifactId>
