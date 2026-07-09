@@ -41,6 +41,7 @@ jobs:
         working-directory: ./client
         run: |
           npm ci
+          mkdir -p dist
           npx vsce package --githubBranch main -o ./dist/
 
       - name: Publish to VS Code Marketplace
